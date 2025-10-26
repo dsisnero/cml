@@ -1,0 +1,53 @@
+[2m2025-10-26T02:31:12.346795Z[0m [32m INFO[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m Try load snippets from: "/Users/dominic/.config/helix/snippets/ruby.toml" for scope: Some(["ruby"])
+[2m2025-10-26T02:31:12.346969Z[0m [31mERROR[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m On read snippets from "/Users/dominic/.config/helix/snippets/ruby.toml": TOML parse error at line 1, column 1
+  |
+1 | [[snippet]]
+  | ^
+missing field `snippets`
+
+[2m2025-10-26T02:31:12.346977Z[0m [32m INFO[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m Try read config from: "/Users/dominic/.config/helix/external-snippets.toml"
+[2m2025-10-26T02:31:12.347243Z[0m [32m INFO[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m Try load snippets from: "/Users/dominic/.config/helix/external-snippets/github.com/rafamadriz/friendly-snippets.git/snippets/python/python.json" for scope: Some(["python"])
+[2m2025-10-26T02:31:12.347564Z[0m [32m INFO[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m Try load snippets from: "/Users/dominic/.config/helix/external-snippets/github.com/rafamadriz/friendly-snippets.git/snippets/ruby/ruby.json" for scope: Some(["ruby"])
+[2m2025-10-26T02:31:12.347865Z[0m [32m INFO[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m Try load snippets from: "/Users/dominic/.config/helix/external-snippets/github.com/rafamadriz/friendly-snippets.git/snippets/asciidoc.json" for scope: Some(["asciidoc"])
+[2m2025-10-26T02:31:12.348245Z[0m [32m INFO[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m Try load snippets from: "/Users/dominic/.config/helix/external-snippets/github.com/rafamadriz/friendly-snippets.git/snippets/markdown.json" for scope: Some(["markdown"])
+[2m2025-10-26T02:31:12.348545Z[0m [31mERROR[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m On read dir "/Users/dominic/.config/helix/unicode-input": No such file or directory (os error 2)
+[2m2025-10-26T02:31:12.349260Z[0m [32m INFO[0m [2msimple_completion_language_server::server[0m[2m:[0m server initialized!
+[2m2025-10-26T02:31:12.349291Z[0m [32m INFO[0m [2msimple_completion_language_server::server[0m[2m:[0m Did change configuration: DidChangeConfigurationParams { settings: Object {"feature_paths": Bool(true), "feature_snippets": Bool(true), "feature_unicode_input": Bool(true), "feature_words": Bool(true), "max_completion_items": Number(20), "snippets_first": Bool(true)} }
+[2m2025-10-26T03:07:34.910212Z[0m [31mERROR[0m [2msimple_completion_language_server[0m[2m:[0m On complete by words: matching with an empty pattern string is not supported for this operation
+[2m2025-10-26T03:10:19.077177Z[0m [33m WARN[0m [2mtower_lsp[0m[2m:[0m Got a textDocument/didClose notification, but it is not implemented
+[2m2025-10-26T03:10:33.344881Z[0m [31mERROR[0m [2msimple_completion_language_server[0m[2m:[0m On complete by words: matching with an empty pattern string is not supported for this operation
+[2m2025-10-26T03:10:38.308220Z[0m [31mERROR[0m [2msimple_completion_language_server[0m[2m:[0m On complete by words: matching with an empty pattern string is not supported for this operation
+[2m2025-10-26T03:10:38.472875Z[0m [31mERROR[0m [2msimple_completion_language_server[0m[2m:[0m On complete by words: matching with an empty pattern string is not supported for this operation
+[2m2025-10-26T03:10:38.692410Z[0m [31mERROR[0m [2msimple_completion_language_server[0m[2m:[0m On complete by words: matching with an empty pattern string is not supported for this operation
+[2m2025-10-26T03:10:38.692437Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T03:10:38.692565Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T03:10:38.692579Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T03:10:38.692585Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T03:10:38.692591Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T03:10:38.692599Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T03:10:38.692625Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T03:10:38.692632Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T03:10:38.692637Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T03:10:38.692642Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T03:10:38.692648Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T03:10:38.692652Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T03:10:41.146494Z[0m [31mERROR[0m [2msimple_completion_language_server[0m[2m:[0m On complete by words: matching with an empty pattern string is not supported for this operation
+[2m2025-10-26T03:10:41.146502Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T03:10:41.146551Z[0m [33m WARN[0m [2msimple_completion_language_server[0m[2m:[0m Can't represent current_dir "/Users/dominic/repos/github.com/dsisnero/cml2/examples" as str
+[2m2025-10-26T04:59:38.458247Z[0m [32m INFO[0m [2mtower_lsp::service::layers[0m[2m:[0m shutdown request received, shutting down
+[2m2025-10-26T04:59:38.459638Z[0m [32m INFO[0m [2mtower_lsp::service::layers[0m[2m:[0m exit notification received, stopping
+[2m2025-10-26T05:16:01.753230Z[0m [32m INFO[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m Try load snippets from: "/Users/dominic/.config/helix/snippets/ruby.toml" for scope: Some(["ruby"])
+[2m2025-10-26T05:16:01.753419Z[0m [31mERROR[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m On read snippets from "/Users/dominic/.config/helix/snippets/ruby.toml": TOML parse error at line 1, column 1
+  |
+1 | [[snippet]]
+  | ^
+missing field `snippets`
+
+[2m2025-10-26T05:16:01.753426Z[0m [32m INFO[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m Try read config from: "/Users/dominic/.config/helix/external-snippets.toml"
+[2m2025-10-26T05:16:01.753671Z[0m [32m INFO[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m Try load snippets from: "/Users/dominic/.config/helix/external-snippets/github.com/rafamadriz/friendly-snippets.git/snippets/python/python.json" for scope: Some(["python"])
+[2m2025-10-26T05:16:01.753989Z[0m [32m INFO[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m Try load snippets from: "/Users/dominic/.config/helix/external-snippets/github.com/rafamadriz/friendly-snippets.git/snippets/ruby/ruby.json" for scope: Some(["ruby"])
+[2m2025-10-26T05:16:01.754284Z[0m [32m INFO[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m Try load snippets from: "/Users/dominic/.config/helix/external-snippets/github.com/rafamadriz/friendly-snippets.git/snippets/asciidoc.json" for scope: Some(["asciidoc"])
+[2m2025-10-26T05:16:01.754669Z[0m [32m INFO[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m Try load snippets from: "/Users/dominic/.config/helix/external-snippets/github.com/rafamadriz/friendly-snippets.git/snippets/markdown.json" for scope: Some(["markdown"])
+[2m2025-10-26T05:16:01.755121Z[0m [31mERROR[0m [2msimple_completion_language_server::snippets::config[0m[2m:[0m On read dir "/Users/dominic/.config/helix/unicode-input": No such file or directory (os error 2)
+[2m2025-10-26T05:16:01.755722Z[0m [32m INFO[0m [2msimple_completion_language_server::server[0m[2m:[0m server initialized!
+[2m2025-10-26T05:16:01.755790Z[0m [32m INFO[0m [2msimple_completion_language_server::server[0m[2m:[0m Did change configuration: DidChangeConfigurationParams { settings: Object {"feature_paths": Bool(true), "feature_snippets": Bool(true), "feature_unicode_input": Bool(true), "feature_words": Bool(true), "max_completion_items": Number(20), "snippets_first": Bool(true)} }
