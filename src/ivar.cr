@@ -21,7 +21,7 @@ module CML
     # Creates an event that fills the IVar exactly once.
     # If already filled, syncing this event raises.
     def write_evt(value : T) : Event(Nil)
-      WriteEvt.new(self, value)
+      WriteEvt(T).new(self, value)
     end
 
     # Fill the IVar once; subsequent attempts are ignored.
@@ -71,11 +71,11 @@ module CML
 
     # Event that fires once the IVar has a value.
     def read_evt : Event(T)
-      ReadEvt.new(self)
+      ReadEvt(T).new(self)
     end
 
     # Internal event: when sync'ed, fills the ivar.
-    private class WriteEvt < Event(Nil)
+    private class WriteEvt(T) < Event(Nil)
       def initialize(@ivar : IVar(T), @value : T); end
 
       def try_register(pick : Pick(Nil)) : Proc(Nil)
@@ -87,7 +87,7 @@ module CML
     end
 
     # Internal event: when sync'ed, returns the value.
-    private class ReadEvt < Event(T)
+    private class ReadEvt(T) < Event(T)
       def initialize(@ivar : IVar(T)); end
 
       def try_register(pick : Pick(T)) : Proc(Nil)

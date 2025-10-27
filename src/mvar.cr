@@ -20,17 +20,17 @@ module CML
 
     # Event that puts a value if the MVar is empty.
     def put_evt(value : T) : Event(Nil)
-      PutEvt.new(self, value)
+      PutEvt(T).new(self, value)
     end
 
     # Event that takes a value if present.
     def take_evt : Event(T)
-      TakeEvt.new(self)
+      TakeEvt(T).new(self)
     end
 
     # Event that reads a value without removing it.
     def read_evt : Event(T)
-      ReadEvt.new(self)
+      ReadEvt(T).new(self)
     end
 
     # Internal registration helpers to avoid accessing ivars from nested classes.
@@ -103,7 +103,7 @@ module CML
       end
     end
 
-    private class PutEvt < Event(Nil)
+    private class PutEvt(T) < Event(Nil)
       def initialize(@mvar : MVar(T), @value : T); end
 
       def try_register(pick : Pick(Nil)) : Proc(Nil)
@@ -111,7 +111,7 @@ module CML
       end
     end
 
-    private class TakeEvt < Event(T)
+    private class TakeEvt(T) < Event(T)
       def initialize(@mvar : MVar(T)); end
 
       def try_register(pick : Pick(T)) : Proc(Nil)
@@ -119,7 +119,7 @@ module CML
       end
     end
 
-    private class ReadEvt < Event(T)
+    private class ReadEvt(T) < Event(T)
       def initialize(@mvar : MVar(T)); end
 
       def try_register(pick : Pick(T)) : Proc(Nil)
