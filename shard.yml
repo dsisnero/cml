@@ -1,9 +1,11 @@
-name: cml2
+name: cml
 version: 0.1.0
 
 authors:
-  - your-name-here <your-email-here>
+  - Crystal CML Contributors
 
-crystal: '>= 1.18.1'
+description: A minimal, composable Concurrent ML runtime for Crystal
+
+crystal: ">= 1.18.1"
 
 license: MIT
