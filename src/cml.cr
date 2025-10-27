@@ -311,6 +311,40 @@ module CML
   end
 
   # -----------------------
+  # Future primitives (stubs)
+  # -----------------------
+  # These are placeholders so specs can compile while the primitives are pending.
+  # They raise at registration time if accidentally used.
+  class NotImplementedEvt(T) < Event(T)
+    def initialize(@feature : String); end
+    def try_register(pick : Pick(T)) : Proc(Nil)
+      raise "Not implemented: #{@feature}"
+    end
+  end
+
+  # IVar: single-assignment cell (to be implemented later)
+  class IVar(T)
+    def initialize; end
+    def write_evt(value : T) : Event(Nil)
+      NotImplementedEvt(Nil).new("IVar.write_evt")
+    end
+    def read_evt : Event(T)
+      NotImplementedEvt(T).new("IVar.read_evt")
+    end
+  end
+
+  # MVar: synchronized mutable cell (to be implemented later)
+  class MVar(T)
+    def initialize; end
+    def put_evt(value : T) : Event(Nil)
+      NotImplementedEvt(Nil).new("MVar.put_evt")
+    end
+    def take_evt : Event(T)
+      NotImplementedEvt(T).new("MVar.take_evt")
+    end
+  end
+
+  # -----------------------
   # Public API
   # -----------------------
   # Synchronizes on an event, waiting for it to complete and returning its result.
