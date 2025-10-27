@@ -8,16 +8,14 @@ module CML
     # Ivar / Mvar primitives (to be implemented later)
     # ------------------------------------------------------------------
     describe "IVar and MVar primitives" do
-      it "IVar behaves as single-assignment cell" do
-        pending "IVar not yet implemented"
+      pending "IVar behaves as single-assignment cell" do
         iv = CML::IVar(Int32).new
         spawn { CML.sync(iv.write_evt(99)) }
         CML.sync(iv.read_evt).should eq(99)
         expect_raises(Exception) { CML.sync(iv.write_evt(42)) } # already filled
       end
 
-      it "MVar behaves as synchronized mutable cell" do
-        pending "MVar not yet implemented"
+      pending "MVar behaves as synchronized mutable cell" do
         mv = CML::MVar(Int32).new
         spawn { CML.sync(mv.put_evt(10)) }
         CML.sync(mv.take_evt).should eq(10)
