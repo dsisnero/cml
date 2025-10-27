@@ -39,6 +39,36 @@ module CML
       end
     end
 
+    # Internal helper used by WriteEvt: set value and wake readers.
+    # Raises if already filled.
+    def set_and_wake!(value : T) : Nil
+      @mtx.synchronize do
+        if @value.nil?
+          @value = value
+          until @reads.empty?
+            if r = @reads.shift?
+              r.try_decide(value)
+            end
+          end
+        else
+          raise "IVar already filled"
+        end
+      end
+    end
+
+    # Internal: register a read waiter or complete immediately.
+    def register_read(pick : Pick(T)) : Proc(Nil)
+      @mtx.synchronize do
+        if val = @value
+          pick.try_decide(val)
+          return ->{}
+        else
+          @reads << pick
+          return -> { @mtx.synchronize { @reads.delete(pick) rescue nil } }
+        end
+      end
+    end
+
     # Event that fires once the IVar has a value.
     def read_evt : Event(T)
       ReadEvt.new(self)
@@ -49,21 +79,10 @@ module CML
       def initialize(@ivar : IVar(T), @value : T); end
 
       def try_register(pick : Pick(Nil)) : Proc(Nil)
-        @ivar.@mtx.synchronize do
-          if @ivar.@value.nil?
-            if pick.try_decide(nil)
-              @ivar.@value = @value
-              # Wake any waiting readers
-              until @ivar.@reads.empty?
-                r = @ivar.@reads.shift?
-                r.try_decide(@value) if r
-              end
-            end
-            return ->{}
-          else
-            raise "IVar already filled"
-          end
+        if pick.try_decide(nil)
+          @ivar.set_and_wake!(@value)
         end
+        -> {}
       end
     end
 
@@ -72,15 +91,7 @@ module CML
       def initialize(@ivar : IVar(T)); end
 
       def try_register(pick : Pick(T)) : Proc(Nil)
-        @ivar.@mtx.synchronize do
-          if val = @ivar.@value
-            pick.try_decide(val)
-            return ->{}
-          else
-            @ivar.@reads << pick
-          end
-        end
-        -> { @ivar.@mtx.synchronize { @ivar.@reads.delete(pick) rescue nil } }
+        @ivar.register_read(pick)
       end
     end
   end
