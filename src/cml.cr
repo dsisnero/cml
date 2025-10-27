@@ -294,6 +294,11 @@ module CML
     
     def initialize(@evts : Array(Event(T))); end
 
+    # Allow construction from arrays of Event subtypes (e.g., Array(RecvEvt(T))).
+    def initialize(evts : Array(E)) forall E
+      @evts = evts.map(&.as(Event(T)))
+    end
+
     # Registers all events in the choice with the pick.
     # The first event to complete decides the pick,
     # and all other events are cancelled.
@@ -328,6 +333,11 @@ module CML
   # Creates an event that never succeeds.
   # Useful for creating events that should never complete,
   # such as in timeout scenarios or as placeholders.
+  def self.never(type : T.class) : Event(T) forall T
+    NeverEvt(T).new
+  end
+
+  # Backward-compatible Nil-typed variant.
   def self.never : Event(Nil)
     NeverEvt(Nil).new
   end
@@ -360,5 +370,22 @@ module CML
   def self.choose(evts : Array(Event(T))) : Event(T) forall T
     flat = evts.flat_map { |e| e.is_a?(ChooseEvt(T)) ? e.evts : [e] }
     ChooseEvt(T).new(flat)
+  end
+
+  # Overload to accept arrays of any Event subtype (e.g., Array(RecvEvt(T))).
+  def self.choose(evts : Array(E)) : Event(T) forall T, E
+    up = evts.map(&.as(Event(T)))
+    choose(up)
+  end
+
+  # Alias used by some specs; same semantics as choose.
+  def self.choose_evt(evts : Array(Event(T))) : Event(T) forall T
+    choose(evts)
+  end
+
+  # Overload for choose_evt with subtype arrays.
+  def self.choose_evt(evts : Array(E)) : Event(T) forall T, E
+    up = evts.map(&.as(Event(T)))
+    choose(up)
   end
 end
