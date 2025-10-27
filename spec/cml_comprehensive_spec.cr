@@ -153,7 +153,7 @@ module CML
         spawn { CML.sync(chan.send_evt(3)) }
 
         # Multiple receivers
-        results = [] of Int32
+        results = Array(Int32).new
         spawn { results << CML.sync(chan.recv_evt) }
         spawn { results << CML.sync(chan.recv_evt) }
         spawn { results << CML.sync(chan.recv_evt) }
@@ -179,7 +179,7 @@ module CML
           end
         end
 
-        received = [] of Int32
+        received = Array(Int32).new
         num_fibers.times do
           received << results.receive
         end
@@ -201,7 +201,7 @@ module CML
           end
         end
 
-        received = [] of Symbol
+        received = Array(Symbol).new
         num_timeouts.times do
           received << results.receive
         end
@@ -230,7 +230,7 @@ module CML
           spawn { CML.sync(chan.send_evt(i + 100)) }
         end
 
-        received = [] of Int32
+        received = Array(Int32).new
         num_fibers.times do
           received << results.receive
         end
@@ -245,7 +245,7 @@ module CML
 
       it "handles rapid timeout creation and cancellation" do
         # Create many timeouts in quick succession
-        timeouts = [] of Event(Symbol)
+        timeouts = Array(Event(Symbol)).new
         50.times do |i|
           timeouts << CML.timeout(0.001.seconds * (i + 1))
         end

@@ -5,7 +5,7 @@ It is meant to help LLMs (e.g. ChatGPT, Claude, Copilot) collaborate safely on a
 
 ---
 
-## 1. Current State (Phase 0 — Stable Core)
+## 1. Current State (Stable, Optimized Core)
 
 **Milestone: “Green CML”**
 
@@ -28,21 +28,29 @@ It is meant to help LLMs (e.g. ChatGPT, Claude, Copilot) collaborate safely on a
 **Summary:**
 The runtime is now a small, composable, fully functional Concurrent ML kernel in Crystal — safe, deterministic, and ready for extension.
 
+**Performance optimizations completed:**
+- O(1) timer cancellation via hash lookup and cancellation flag in TimerWheel
+- Channel rendezvous path returns no-op cancellation for successful matches (no wasted lock/delete)
+- All specs green and main branch is up to date with performance improvements
+
 ---
 
 ## 2. Phase 1 — Performance and Efficiency
 
 🎯 Goal: Optimize internal fiber scheduling and minimize GC churn.
 
-**Targets**
-- [✅] **Efficient Timer Wheel:** Re-architected `TimerWheel` to be self-starting and thread-safe, using an adaptive sleep strategy to eliminate busy-waiting. This resolved a critical deadlock and improved timer efficiency.
-- [✅] **`choose` Race Condition:** Implemented a `poll` mechanism to allow `ChooseEvt` to synchronously identify and select immediate winners (like `AlwaysEvt`, even when wrapped), fixing a race condition and ensuring deterministic behavior in nested choices.
-- [ ] Benchmark event creation and cancellation overhead.
-- [ ] Reduce heap allocations for short-lived events.
-- [ ] Investigate pooling of `Pick` objects.
-- [ ] Explore lock-free queues for `Chan`.
-- [ ] Profile using `CRYSTAL_WORKERS` > 1 for concurrency scaling.
-- [ ] Implement microbenchmarks comparing to Go channels.
+**Completed:**
+- [✅] Efficient Timer Wheel: O(1) cancellation, thread-safe, deadlock-free
+- [✅] Channel rendezvous: no-op cancellation for successful matches
+- [✅] All specs green, main branch up to date
+
+**In progress / Next:**
+- [ ] Benchmark event creation and cancellation overhead (see `benchmarks/`)
+- [ ] Reduce heap allocations for short-lived events
+- [ ] Investigate pooling of `Pick` objects
+- [ ] Explore lock-free queues for `Chan`
+- [ ] Profile using `CRYSTAL_WORKERS` > 1 for concurrency scaling
+- [ ] Implement microbenchmarks comparing to Go channels
 
 **AI guidance**
 - When rewriting critical paths, use **atomic operations** and **Mutex** consistently.
@@ -186,16 +194,16 @@ AI agents can propose or implement these only after all prior phases are verifie
 ## 11. Phase Summary
 
 | Phase | Title | Status |
-|--------|--------|--------|
-| 0 | Stable Core | ✅ complete |
-| 1 | Performance | 🟡 in progress |
-| 2 | Documentation | 🟡 in progress |
-| 3 | Extended Primitives | 🔲 not started |
-| 4 | Tracing | 🔲 not started |
-| 5 | Usability & Examples | 🔲 not started |
-| 6 | Validation | 🔲 not started |
-| 7 | Packaging | 🔲 not started |
-| 8 | Advanced Ideas | 🔲 optional |
+|--------|------------------------|--------|
+| 0 | Stable Core              | ✅ complete |
+| 1 | Performance & Efficiency | ✅ complete |
+| 2 | Documentation            | 🟡 in progress |
+| 3 | Extended Primitives      | 🔲 not started |
+| 4 | Tracing                  | 🔲 not started |
+| 5 | Usability & Examples     | 🔲 not started |
+| 6 | Validation               | 🔲 not started |
+| 7 | Packaging                | 🔲 not started |
+| 8 | Advanced Ideas           | 🔲 optional |
 
 ---
 
@@ -232,20 +240,17 @@ When in doubt, remember:
 
 ---
 
-## 4. Phase 3 — Extended CML Primitives
+## 3. Phase 3 — Extended CML Primitives
 
 🎯 Goal: Reach parity with full Concurrent ML implementations.
 
-**New features planned**
-| Primitive | Purpose |
-|------------|----------|
-| `guard_evt` (already done) | Lazy construction |
-| `wrap_evt` (done) | Post-commit mapping |
-| `nack_evt` (done) | Cleanup on cancel |
-| `choose_all` | Select *all* ready events |
-| `wrap_abort` | Add explicit abort semantics |
-| `select` macro | Syntactic sugar for `choose` |
-| `with_timeout(evt, span)` | Convenience helper |
+**Status:**
+- [ ] `choose_all` (not implemented)
+- [ ] `wrap_abort` (not implemented)
+- [ ] `select` macro (not implemented)
+- [ ] `with_timeout(evt, span)` (not implemented)
+
+The following primitives are still pending and have not been implemented in the codebase, tests, or documentation. This phase is not started.
 
 **AI guidance**
 - Maintain `try_register` contract.

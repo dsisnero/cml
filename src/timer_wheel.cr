@@ -36,14 +36,14 @@ module CML
         {64, 6},  # Level 1: 64 slots, 6 bits
         {64, 6},  # Level 2: 64 slots, 6 bits
         {64, 6},  # Level 3: 64 slots, 6 bits
-      ]
+      ],
     )
       @current_time = 0_u64
-      @wheel_slots = [] of Array(Array(TimerEntry))
-      @wheel_offsets = [] of UInt64
-      @wheel_masks = [] of UInt64
-      @wheel_shifts = [] of Int32
-      @pending_timers = [] of TimerEntry
+      @wheel_slots = Array(Array(Array(TimerEntry))).new
+      @wheel_offsets = Array(UInt64).new
+      @wheel_masks = Array(UInt64).new
+      @wheel_shifts = Array(Int32).new
+      @pending_timers = Array(TimerEntry).new
       @next_id = 0_u64
       @timer_locations = Hash(UInt64, TimerEntry).new
       @mutex = Mutex.new
@@ -118,7 +118,7 @@ module CML
     private def setup_wheels
       total_shift = 0
       @wheel_config.each_with_index do |(slots, bits), level|
-        @wheel_slots << Array(Array(TimerEntry)).new(slots) { [] of TimerEntry }
+        @wheel_slots << Array(Array(TimerEntry)).new(slots) { Array(TimerEntry).new }
         @wheel_masks << (slots - 1).to_u64
         @wheel_shifts << total_shift
         @wheel_offsets << (level == 0 ? 0_u64 : 1_u64 << total_shift)
@@ -237,8 +237,8 @@ module CML
       slot = @wheel_slots[level][slot_index]
       return if slot.empty?
 
-      expired = [] of TimerEntry
-      remaining = [] of TimerEntry
+      expired = Array(TimerEntry).new
+      remaining = Array(TimerEntry).new
 
       slot.each do |entry|
         if entry.cancelled?
@@ -290,7 +290,7 @@ module CML
       slot = @wheel_slots[level][slot_index]
       return if slot.empty?
 
-      @wheel_slots[level][slot_index] = [] of TimerEntry
+      @wheel_slots[level][slot_index] = Array(TimerEntry).new
       slot.each do |entry|
         next if entry.cancelled?
         add_to_wheel_internal(entry) || @pending_timers << entry
@@ -299,7 +299,7 @@ module CML
 
     private def retry_pending_timers_internal
       return if @pending_timers.empty?
-      remaining = [] of TimerEntry
+      remaining = Array(TimerEntry).new
       @pending_timers.each do |entry|
         add_to_wheel_internal(entry) || remaining << entry
       end

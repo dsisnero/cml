@@ -1,8 +1,30 @@
-# src/cml.cr
-# Concurrent ML runtime in Crystal
-# Supports: Event, sync, choose, wrap, guard, nack, timeout, channels with cancellation
-
 module CML
+  # -----------------------
+  # Select macro (pattern-matching event choice)
+  # -----------------------
+  # Usage:
+  #   CML.select(
+  #     {ev1, ->(x : T) { ... }},
+  #     {ev2, ->(y : U) { ... }}
+  #   )
+  macro select(pairs)
+    CML.__select_impl({{pairs}})
+  end
+
+  # Internal select implementation
+  def self.__select_impl(pairs)
+    idx = nil
+    result = nil
+    events = pairs.map(&.first)
+    handlers = pairs.map(&.last)
+    wrapped = events.each_with_index.map do |ev, i|
+      wrap(ev) { |v| idx = i; result = v; v }
+    end.to_a
+    sync(choose(wrapped))
+    handlers[idx.not_nil!].call(result)
+  end
+
+  # ...existing code...
   # Global timer wheel instance for efficient timeout management.
   # The timer wheel automatically starts its own processing fiber.
   class_getter timer_wheel : TimerWheel = TimerWheel.new
@@ -18,7 +40,7 @@ module CML
     @winner : T? = nil
     @done = Channel(Nil).new(1)
     @decided = Atomic(Bool).new(false)
-    @cancellations = [] of Proc(Nil)
+    @cancellations = Array(Proc(Nil)).new
     @mtx = Mutex.new
 
     def add_cancel(proc : Proc(Nil))
@@ -32,7 +54,7 @@ module CML
       # Fast path check without lock
       return false if decided?
 
-      cancellations_to_run = [] of Proc(Nil)
+      cancellations_to_run = Array(Proc(Nil)).new
       made_decision = false
 
       @mtx.synchronize do
@@ -40,7 +62,7 @@ module CML
           @winner = value
           @done.send(nil) rescue nil
           cancellations_to_run = @cancellations
-          @cancellations = [] of Proc(Nil) # Clear to prevent re-entry
+          @cancellations = Array(Proc(Nil)).new # Clear to prevent re-entry
           made_decision = true
         end
       end
@@ -160,7 +182,7 @@ module CML
     # Otherwise, the send is queued until a receiver arrives.
     def register_send(value : T, pick : Pick(Nil)) : Proc(Nil)
       offer = {value, pick}
-      
+
       # Defer decision-making to outside the lock
       recv_pick_to_decide : Pick(T)? = nil
 
@@ -178,7 +200,7 @@ module CML
       if recv_pick = recv_pick_to_decide
         recv_pick.try_decide(value)
         pick.try_decide(nil)
-        return ->{} # Rendezvous complete, no-op cancel
+        return -> { } # Rendezvous complete, no-op cancel
       end
 
       # Return a cancellation proc that removes from the send queue
@@ -190,7 +212,7 @@ module CML
     # Otherwise, the receive is queued until a sender arrives.
     def register_recv(pick : Pick(T)) : Proc(Nil)
       offer = pick
-      
+
       # Defer decision-making to outside the lock
       send_pair_to_decide : {T, Pick(Nil)}? = nil
 
@@ -209,7 +231,7 @@ module CML
         value, send_pick = pair
         send_pick.try_decide(nil)
         pick.try_decide(value)
-        return ->{} # Rendezvous complete, no-op cancel
+        return -> { } # Rendezvous complete, no-op cancel
       end
 
       # Return a cancellation proc that removes from the receive queue
@@ -286,10 +308,49 @@ module CML
     # A `WrapEvt` can be polled if its inner event can be.
     # This allows `choose` to see through the wrapper to an `AlwaysEvt`.
     def poll : B?
-      if inner_val = @inner.poll
-        @f.call(inner_val)
-      end
+      return unless inner_val = @inner.poll
+      @f.call(inner_val)
     end
+  end
+
+  # -----------------------
+  # WrapAbort (wrap with abort on cancel)
+  # -----------------------
+  # Like wrap, but runs an abort callback if the event is cancelled (loses a choose).
+  #
+  # @type A The result type of the inner event
+  # @type B The result type after transformation
+  class WrapAbortEvt(A, B) < Event(B)
+    def initialize(@inner : Event(A), @on_abort : -> Nil, &@f : A -> B); end
+
+    def try_register(pick : Pick(B)) : Proc(Nil)
+      inner_pick = Pick(A).new
+      cancel_inner = @inner.try_register(inner_pick)
+      won = Atomic(Bool).new(false)
+      spawn do
+        inner_pick.wait
+        if inner_pick.decided?
+          won.set(true)
+          pick.try_decide(@f.call(inner_pick.value))
+        end
+      end
+      -> {
+        unless won.get
+          @on_abort.call
+        end
+        cancel_inner.call
+      }
+    end
+
+    def poll : B?
+      return unless inner_val = @inner.poll
+      @f.call(inner_val)
+    end
+  end
+
+  # Public API for wrap_abort
+  def self.wrap_abort(evt : Event(A), on_abort : -> Nil, &block : A -> B) : Event(B) forall A, B
+    WrapAbortEvt(A, B).new(evt, on_abort, &block)
   end
 
   # -----------------------
@@ -328,7 +389,7 @@ module CML
   # An event that runs a callback when it loses in a choice.
   # The callback is executed only if this event is registered but not chosen.
   #
-    # @type T The result type of the inner event
+  # @type T The result type of the inner event
   class NackEvt(T) < Event(T)
     # Creates a new nack event.
     def initialize(@inner : Event(T), &@on_cancel : -> Nil); end
@@ -377,7 +438,7 @@ module CML
       @evts.each do |evt|
         if value = evt.poll
           if pick.try_decide(value)
-            return ->{} # Immediate win, no cancellation needed.
+            return -> { } # Immediate win, no cancellation needed.
           end
         end
       end
@@ -413,7 +474,7 @@ module CML
   # -----------------------
   # Timer Wheel Events
   # -----------------------
-    # Timer event that uses the TimerWheel for efficient timeout management
+  # Timer event that uses the TimerWheel for efficient timeout management
   class TimerEvent < Event(Symbol)
     @timer_id : UInt64?
     @pick : Pick(Symbol)?
@@ -432,12 +493,11 @@ module CML
       -> {
         # Prevent the timer from firing by clearing the pick
         @pick = nil
-        if timer_id = @timer_id
-          @timer_wheel.cancel(timer_id)
-        end
+        return unless timer_id = @timer_id
+        @timer_wheel.cancel(timer_id)
       }
     end
-  end    # Interval timer event for recurring timeouts
+  end # Interval timer event for recurring timeouts
   class IntervalTimerEvent < Event(Symbol)
     @timer_id : UInt64?
     @pick : Pick(Symbol)?
@@ -454,9 +514,8 @@ module CML
       # Return cancellation proc
       -> {
         @pick = nil
-        if timer_id = @timer_id
-          @timer_wheel.cancel(timer_id)
-        end
+        return unless timer_id = @timer_id
+        @timer_wheel.cancel(timer_id)
       }
     end
   end
@@ -535,19 +594,37 @@ module CML
     choose(evts)
   end
 
+  # Creates an event that synchronizes on all immediately ready events.
+  # Returns an array of results for all events that can complete now.
+  # If none are ready, synchronizes on the first to complete.
+  def self.choose_all(evts : Array(Event(T))) : Event(Array(T)) forall T
+    return AlwaysEvt(Array(T)).new(Array(T).new) if evts.empty?
+    ready = evts.compact_map(&.poll)
+    if !ready.empty?
+      AlwaysEvt(Array(T)).new(ready)
+    else
+      # Fallback: synchronize on the first event to complete, wrap in array
+      WrapEvt(T, Array(T)).new(ChooseEvt(T).new(evts)) { |x| [x] }
+    end
+  end
+
+  def self.choose_all(*evts : Event(T)) : Event(Array(T)) forall T
+    choose_all(evts.to_a)
+  end
+
   # Creates an interval timeout event that completes periodically with the symbol `:timeout`.
   # Useful for creating recurring time-limited operations.
   def self.timeout_interval(interval : Time::Span) : Event(Symbol)
     IntervalTimerEvent.new(timer_wheel, interval)
   end
 
-  # Varargs convenience overloads to avoid constructing arrays at call sites.
-  def self.choose(*evts : Event(T)) : Event(T) forall T
-    choose(evts.to_a)
-  end
-
-  def self.choose_evt(*evts : Event(T)) : Event(T) forall T
-    choose(evts.to_a)
+  # Races an event against a timeout. Returns a tagged tuple: {result, :ok} or {nil, :timeout}
+  def self.with_timeout(evt : Event(T), span : Time::Span) : Event({T?, Symbol}) forall T
+    events = Array(Event(::Tuple(T | ::Nil, Symbol))).new
+    events << wrap(evt) { |v| {v.as(T?), :ok} }
+    timeout_evt = wrap(timeout(span)) { |_| {nil.as(T?), :timeout} }.as(Event({T?, Symbol}))
+    events << timeout_evt
+    choose(events)
   end
 end
 
