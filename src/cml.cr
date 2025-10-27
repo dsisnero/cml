@@ -18,18 +18,40 @@ module CML
     @winner : T? = nil
     @done = Channel(Nil).new(1)
     @decided = Atomic(Bool).new(false)
+    @cancellations = [] of Proc(Nil)
+    @mtx = Mutex.new
+
+    def add_cancel(proc : Proc(Nil))
+      @mtx.synchronize { @cancellations << proc }
+    end
 
     # Attempts to decide this pick with the given value.
     # Only succeeds if the pick hasn't been decided yet.
     # This operation is atomic and thread-safe.
     def try_decide(value : T) : Bool
-      if @decided.compare_and_set(false, true)
-        @winner = value
-        @done.send(nil) rescue nil
-        true
-      else
-        false
+      # Fast path check without lock
+      return false if decided?
+
+      cancellations_to_run = [] of Proc(Nil)
+      made_decision = false
+
+      @mtx.synchronize do
+        if @decided.compare_and_set(false, true)
+          @winner = value
+          @done.send(nil) rescue nil
+          cancellations_to_run = @cancellations
+          @cancellations = [] of Proc(Nil) # Clear to prevent re-entry
+          made_decision = true
+        end
       end
+
+      # Run cancellations outside the lock. This is the key to avoiding
+      # the re-entrant lock deadlocks seen in previous attempts.
+      if made_decision
+        cancellations_to_run.each &.call
+      end
+
+      made_decision
     end
 
     # Checks if this pick has been decided.
@@ -138,16 +160,28 @@ module CML
     # Otherwise, the send is queued until a receiver arrives.
     def register_send(value : T, pick : Pick(Nil)) : Proc(Nil)
       offer = {value, pick}
-      matched = false
+      
+      # Defer decision-making to outside the lock
+      recv_pick_to_decide : Pick(T)? = nil
+
       @mtx.synchronize do
         if recv_pick = @recv_q.shift?
-          recv_pick.try_decide(value)
-          pick.try_decide(nil)
-          matched = true
+          # Found a waiting receiver, prepare to complete the rendezvous
+          recv_pick_to_decide = recv_pick
         else
+          # No receiver waiting, so add to the send queue
           @send_q << offer
         end
       end
+
+      # Perform the decision *after* releasing the lock
+      if recv_pick = recv_pick_to_decide
+        recv_pick.try_decide(value)
+        pick.try_decide(nil)
+        return ->{} # Rendezvous complete, no-op cancel
+      end
+
+      # Return a cancellation proc that removes from the send queue
       -> { @mtx.synchronize { @send_q.delete(offer) rescue nil } }
     end
 
@@ -156,17 +190,29 @@ module CML
     # Otherwise, the receive is queued until a sender arrives.
     def register_recv(pick : Pick(T)) : Proc(Nil)
       offer = pick
-      matched = false
+      
+      # Defer decision-making to outside the lock
+      send_pair_to_decide : {T, Pick(Nil)}? = nil
+
       @mtx.synchronize do
         if pair = @send_q.shift?
-          value, send_pick = pair
-          send_pick.try_decide(nil)
-          pick.try_decide(value)
-          matched = true
+          # Found a waiting sender, prepare to complete the rendezvous
+          send_pair_to_decide = pair
         else
+          # No sender waiting, so add to the receive queue
           @recv_q << offer
         end
       end
+
+      # Perform the decision *after* releasing the lock
+      if pair = send_pair_to_decide
+        value, send_pick = pair
+        send_pick.try_decide(nil)
+        pick.try_decide(value)
+        return ->{} # Rendezvous complete, no-op cancel
+      end
+
+      # Return a cancellation proc that removes from the receive queue
       -> { @mtx.synchronize { @recv_q.delete(offer) rescue nil } }
     end
   end
@@ -328,23 +374,26 @@ module CML
     # and all other events are cancelled.
     def try_register(pick : Pick(T)) : Proc(Nil)
       # --- Polling Optimization ---
-      # First, poll all events to see if any can complete immediately.
-      # This avoids the overhead of registration for choices with an `AlwaysEvt`.
       @evts.each do |evt|
         if value = evt.poll
           if pick.try_decide(value)
-            return ->{} # Return an empty cancellation proc
+            return ->{} # Immediate win, no cancellation needed.
           end
         end
       end
 
-      # If no event won by polling, proceed with full registration.
-      cancels = @evts.map(&.try_register(pick))
-      spawn do
-        pick.wait
-        cancels.each &.call
+      # --- Asynchronous Registration ---
+      # Register all child events and add their cancellation procs
+      # directly to the pick. This avoids allocating a `cancels` array
+      # and spawning a cleanup fiber.
+      @evts.each do |evt|
+        pick.add_cancel(evt.try_register(pick))
       end
-      -> { cancels.each &.call }
+
+      # The cancellation proc for the ChooseEvt itself is a no-op.
+      # The pick handles cleanup of child events. This is needed
+      # for nested choose scenarios where a parent choose cancels this one.
+      -> { }
     end
   end
 
@@ -421,6 +470,12 @@ module CML
     pick = Pick(T).new
     cancel = evt.try_register(pick)
     pick.wait
+    # After waiting, if the event was a `choose`, the winner has already
+    # executed the necessary cancellations via `pick.try_decide`.
+    # We must still call the top-level `cancel` proc, however, for two reasons:
+    # 1. The event might not have been a `choose` and needs its own cleanup.
+    # 2. The event could be a nested `choose`, and this call propagates
+    #    the cancellation signal upwards.
     cancel.call
     pick.value
   end
@@ -496,7 +551,6 @@ module CML
   end
 end
 
-require "./cml/wrap_always_evt"
 require "./timer_wheel"
 require "./ivar"
 require "./mvar"
