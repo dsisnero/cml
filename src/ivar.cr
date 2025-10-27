@@ -26,7 +26,6 @@ module CML
 
     # Fill the IVar once; subsequent attempts are ignored.
     def fill(value : T) : Nil
-      ready = [] of Pick(T)
       @mtx.synchronize do
         if @value.nil?
           @value = value
@@ -61,7 +60,7 @@ module CML
       @mtx.synchronize do
         if val = @value
           pick.try_decide(val)
-          return ->{}
+          return -> { }
         else
           @reads << pick
           return -> { @mtx.synchronize { @reads.delete(pick) rescue nil } }
@@ -82,7 +81,7 @@ module CML
         if pick.try_decide(nil)
           @ivar.set_and_wake!(@value)
         end
-        -> {}
+        -> { }
       end
     end
 
@@ -96,4 +95,3 @@ module CML
     end
   end
 end
-

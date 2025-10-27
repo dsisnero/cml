@@ -3,7 +3,6 @@ require "./spec_helper"
 
 module CML
   describe "Additional CML Behavioral Specs" do
-
     # ------------------------------------------------------------------
     # Ivar / Mvar primitives (to be implemented later)
     # ------------------------------------------------------------------
@@ -30,7 +29,7 @@ module CML
     describe "Sync determinism" do
       it "returns exactly once for any event" do
         ch = Chan(Int32).new
-        ev = ch.recv_evt
+        ev = ch.recv_ev
         spawn { CML.sync(ch.send_evt(5)) }
         result1 = CML.sync(ev)
         result2 = CML.sync(CML.always(result1))

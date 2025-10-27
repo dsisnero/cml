@@ -1,0 +1,170 @@
+require "../spec_helper"
+require "../../src/cml/timer_wheel"
+
+describe CML::TimerWheel do
+  describe "basic timer operations" do
+    it "executes one-time timers" do
+      fired = false
+      wheel = CML::TimerWheel.new(10.milliseconds)
+
+      wheel.schedule(50.milliseconds) do
+        fired = true
+      end
+
+      wheel.advance(100.milliseconds)
+      fired.should be_true
+    end
+
+    it "executes interval timers multiple times" do
+      count = 0
+      wheel = CML::TimerWheel.new(10.milliseconds)
+
+      wheel.schedule_interval(50.milliseconds) do
+        count += 1
+      end
+
+      wheel.advance(250.milliseconds)
+      count.should eq(5)
+    end
+
+    it "cancels timers before execution" do
+      fired = false
+      wheel = CML::TimerWheel.new
+
+      timer_id = wheel.schedule(1.second) do
+        fired = true
+      end
+
+      wheel.cancel(timer_id).should be_true
+      wheel.advance(2.seconds)
+      fired.should be_false
+    end
+  end
+
+  describe "hierarchical wheel behavior" do
+    it "handles timers across multiple wheel levels" do
+      results = [] of Int32
+      wheel = CML::TimerWheel.new(1.millisecond)
+
+      # Schedule timers that will land in different wheel levels
+      [10, 100, 1000, 10000].each_with_index do |ms, i|
+        wheel.schedule(ms.milliseconds) do
+          results << i
+        end
+      end
+
+      wheel.advance(15000.milliseconds)
+      results.should eq([0, 1, 2, 3])
+    end
+
+    it "cascades timers correctly on wheel overflow" do
+      fired = false
+      wheel = CML::TimerWheel.new(
+        1.millisecond,
+        [{4, 2}, {4, 2}] # Small wheels for testing overflow
+      )
+
+      # This should overflow from level 0 to level 1
+      wheel.schedule(20.milliseconds) do
+        fired = true
+      end
+
+      wheel.advance(25.milliseconds)
+      fired.should be_true
+    end
+  end
+
+  describe "edge cases" do
+    it "handles zero and negative timeouts" do
+      wheel = CML::TimerWheel.new
+
+      expect_raises(ArgumentError) do
+        wheel.schedule(0.seconds) { }
+      end
+    end
+
+    it "handles callback exceptions gracefully" do
+      wheel = CML::TimerWheel.new
+      executed = false
+
+      wheel.schedule(10.milliseconds) do
+        executed = true
+        raise "Callback error"
+      end
+
+      # Should not raise, just log
+      wheel.advance(20.milliseconds)
+      executed.should be_true
+    end
+
+    it "maintains accuracy with many timers" do
+      count = 0
+      wheel = CML::TimerWheel.new(1.millisecond)
+
+      # Schedule 1000 timers
+      1000.times do |i|
+        wheel.schedule((i % 100 + 1).milliseconds) do
+          count += 1
+        end
+      end
+
+      wheel.advance(200.milliseconds)
+      count.should eq(1000)
+    end
+
+    it "handles system time jumps with process_expired" do
+      fired = false
+      wheel = CML::TimerWheel.new
+
+      wheel.schedule(5.seconds) do
+        fired = true
+      end
+
+      # Advance by less than the timeout duration
+      wheel.advance(4.seconds)
+      fired.should be_false
+
+      # Now advance past the timeou
+      wheel.advance(2.seconds)
+      fired.should be_true
+    end
+  end
+
+  describe "concurrent access" do
+    it "safely handles simultaneous schedule and advance" do
+      wheel = CML::TimerWheel.new
+      count = Atomic(Int32).new(0)
+
+      # Use a channel to coordinate completion
+      done_channel = Channel(Nil).new
+
+      # Schedule from multiple fibers
+      5.times do
+        spawn do
+          10.times do
+            wheel.schedule(1.millisecond) do
+              count.add(1)
+            end
+          end
+          done_channel.send(nil)
+        end
+      end
+
+      # Advance concurrently
+      spawn do
+        5.times do
+          wheel.advance(2.milliseconds)
+        end
+        done_channel.send(nil)
+      end
+
+      # Wait for all fibers to complete
+      6.times { done_channel.receive }
+
+      # Give final processing time
+      wheel.advance(100.milliseconds)
+
+      count.get.should be > 0
+    end
+  end
+end

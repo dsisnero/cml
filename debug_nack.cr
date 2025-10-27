@@ -8,7 +8,7 @@ nacked = CML.nack(ch.send_evt(42)) do
   cleanup_called.set(true)
 end
 
-# Race the nacked send against a timeout
+# Race the nacked send against a timeou
 choice = CML.choose([
   CML.wrap(nacked) { |_| :nacked },
   CML.timeout(0.5.seconds),

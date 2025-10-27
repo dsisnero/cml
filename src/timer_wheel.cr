@@ -1,5 +1,5 @@
 module CML
-  # Hierarchical timing wheel for efficient timeout management
+  # Hierarchical timing wheel for efficient timeout managemen
   class TimerWheel
     getter current_time : UInt64
     getter? running : Bool = true
@@ -38,13 +38,13 @@ module CML
       @wheel_config.each_with_index do |(slots, bits), level|
         @wheel_slots << Array(Array(TimerEntry)).new(slots) { [] of TimerEntry }
         @wheel_masks << (slots - 1).to_u64
-        @wheel_shifts << total_shift
+        @wheel_shifts << total_shif
         @wheel_offsets << (level == 0 ? 0_u64 : 1_u64 << total_shift)
         total_shift += bits
       end
     end
 
-    # Schedules a one-time timeout
+    # Schedules a one-time timeou
     def schedule(timeout : Time::Span, &callback : ->) : UInt64
       add_timer(timeout, nil, callback)
     end
@@ -272,7 +272,7 @@ module CML
       end
     end
 
-    # Add a method to get the current time in a more usable format
+    # Add a method to get the current time in a more usable forma
     def current_time_ms : UInt64
       @current_time
     end

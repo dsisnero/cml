@@ -85,7 +85,7 @@ module CML
         condition = Atomic(Bool).new(false)
 
         guarded = CML.guard do
-          if condition.get
+          if condition.ge
             CML.always(:ready)
           else
             CML.timeout(0.1.seconds)
@@ -99,7 +99,7 @@ module CML
         # Now set condition to true and test again
         condition.set(true)
         guarded2 = CML.guard do
-          if condition.get
+          if condition.ge
             CML.always(:ready)
           else
             CML.timeout(0.1.seconds)
@@ -276,7 +276,7 @@ module CML
           cleanup_called.set(true)
         end
 
-        # Race the nacked send against a timeout
+        # Race the nacked send against a timeou
         choice = CML.choose([
           CML.wrap(nacked) { |_| :nacked },
           CML.timeout(0.5.seconds),

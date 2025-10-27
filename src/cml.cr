@@ -3,6 +3,21 @@
 # Supports: Event, sync, choose, wrap, guard, nack, timeout, channels with cancellation
 
 module CML
+  # Global timer wheel instance for efficient timeout managemen
+  class_getter timer_wheel : TimerWheel = TimerWheel.new
+
+  # Fiber that periodically processes expired timers
+  @@timer_processor : Fiber = spawn do
+    loop do
+      # Process any expired timers
+      @@timer_wheel.process_expired
+
+      # Sleep for a short duration to avoid busy-waiting
+      # This could be optimized by calculating the next expiration time
+      sleep 1.millisecond
+    end
+  end
+
   # -----------------------
   # Commit Cell (Pick)
   # -----------------------
@@ -19,7 +34,7 @@ module CML
     # Only succeeds if the pick hasn't been decided yet.
     # This operation is atomic and thread-safe.
     def try_decide(value : T) : Bool
-      return false if @decided.get
+      return false if @decided.ge
       if @decided.compare_and_set(false, true)
         @winner = value
         @done.send(nil) rescue nil
@@ -31,7 +46,7 @@ module CML
 
     # Checks if this pick has been decided.
     def decided? : Bool
-      @decided.get
+      @decided.ge
     end
 
     # Gets the decided value of this pick.
@@ -59,7 +74,7 @@ module CML
   # Events represent computations that may produce a value when synchronized.
   #
   # @type T The type of value this event produces
-  # @abstract
+  # @abstrac
   abstract class Event(T)
     # Attempts to register this event with a pick (decision point).
     # Returns a cancellation procedure that should be called if the event is no longer needed.
@@ -186,17 +201,11 @@ module CML
     def initialize(@duration : Time::Span); end
 
     # Registers this timeout event with a pick.
-    # Spawns a fiber that will decide the pick after the timeout duration,
-    # unless cancelled.
+    # Uses the global timer wheel instead of spawning fibers for efficiency.
     def try_register(pick : Pick(Symbol)) : Proc(Nil)
-      cancelled = Atomic(Bool).new(false)
-      spawn do
-        sleep @duration
-        unless cancelled.get
-          pick.try_decide(:timeout)
-        end
-      end
-      -> { cancelled.set(true) }
+      # Use the global timer wheel instead of spawning fibers
+      timer_event = TimerEvent.new(CML.timer_wheel, @duration)
+      timer_event.try_register(pick)
     end
   end
 
@@ -206,7 +215,7 @@ module CML
   # An event that transforms the result of another event.
   # The transformation function is applied after the inner event completes.
   #
-  # @type A The result type of the inner event
+  # @type A The result type of the inner even
   # @type B The result type after transformation
   class WrapEvt(A, B) < Event(B)
     def initialize(@inner : Event(A), &@f : A -> B); end
@@ -218,7 +227,7 @@ module CML
       inner_pick = Pick(A).new
       cancel_inner = @inner.try_register(inner_pick)
       spawn do
-        inner_pick.wait
+        inner_pick.wai
         if inner_pick.decided?
           pick.try_decide(@f.call(inner_pick.value))
         end
@@ -233,7 +242,7 @@ module CML
   # An event that defers creation of its inner event until synchronization time.
   # Useful for creating events that depend on runtime state.
   #
-  # @type T The result type of the guarded event
+  # @type T The result type of the guarded even
   class GuardEvt(T) < Event(T)
     @block : Proc(Event(T))
 
@@ -256,7 +265,7 @@ module CML
   # An event that runs a callback when it loses in a choice.
   # The callback is executed only if this event is registered but not chosen.
   #
-  # @type T The result type of the inner event
+  # @type T The result type of the inner even
   class NackEvt(T) < Event(T)
     # Creates a new nack event.
     def initialize(@inner : Event(T), &@on_cancel : -> Nil); end
@@ -275,7 +284,7 @@ module CML
       # IMPORTANT: tie cleanup to the cancel closure,
       # which ChooseEvt will call after the race is decided.
       -> {
-        unless won.get
+        unless won.ge
           @on_cancel.call
         end
         cancel_inner.call
@@ -291,7 +300,7 @@ module CML
   # All other events are cancelled.
   class ChooseEvt(T) < Event(T)
     getter evts : Array(Event(T))
-    
+
     # Accept arrays of Event or any Event subtype (e.g., Array(RecvEvt(T))).
     def initialize(evts : Array(E)) forall E
       @evts = evts.map(&.as(Event(T)))
@@ -303,7 +312,7 @@ module CML
     def try_register(pick : Pick(T)) : Proc(Nil)
       cancels = @evts.map(&.try_register(pick))
       spawn do
-        pick.wait
+        pick.wai
         cancels.each &.call
       end
       -> { cancels.each &.call }
@@ -317,11 +326,70 @@ module CML
   # They raise at registration time if accidentally used.
   class NotImplementedEvt(T) < Event(T)
     def initialize(@feature : String); end
+
     def try_register(pick : Pick(T)) : Proc(Nil)
       raise "Not implemented: #{@feature}"
     end
   end
 
+  # -----------------------
+  # Timer Wheel Events
+  # -----------------------
+  # Timer event that uses the TimerWheel for efficient timeout managemen
+  class TimerEvent < Event(Symbol)
+    @timer_id : UInt64?
+    @cancelled = Atomic(Bool).new(false)
+
+    def initialize(@timer_wheel : TimerWheel, @duration : Time::Span); end
+
+    def try_register(pick : Pick(Symbol)) : Proc(Nil)
+      # Reset cancellation state
+      @cancelled.set(false)
+
+      # Schedule the timer with the wheel
+      @timer_id = @timer_wheel.schedule(@duration) do
+        unless @cancelled.ge
+          pick.try_decide(:timeout)
+        end
+      end
+
+      # Return cancellation proc
+      -> {
+        @cancelled.set(true)
+        if timer_id = @timer_id
+          @timer_wheel.cancel(timer_id)
+        end
+      }
+    end
+  end
+
+  # Interval timer event for recurring timeouts
+  class IntervalTimerEvent < Event(Symbol)
+    @timer_id : UInt64?
+    @cancelled = Atomic(Bool).new(false)
+
+    def initialize(@timer_wheel : TimerWheel, @interval : Time::Span); end
+
+    def try_register(pick : Pick(Symbol)) : Proc(Nil)
+      # Reset cancellation state
+      @cancelled.set(false)
+
+      # Schedule the interval timer with the wheel
+      @timer_id = @timer_wheel.schedule_interval(@interval) do
+        unless @cancelled.ge
+          pick.try_decide(:timeout)
+        end
+      end
+
+      # Return cancellation proc
+      -> {
+        @cancelled.set(true)
+        if timer_id = @timer_id
+          @timer_wheel.cancel(timer_id)
+        end
+      }
+    end
+  end
 
   # -----------------------
   # Public API
@@ -331,7 +399,7 @@ module CML
   def self.sync(evt : Event(T)) : T forall T
     pick = Pick(T).new
     cancel = evt.try_register(pick)
-    pick.wait
+    pick.wai
     cancel.call
     pick.value
   end
@@ -379,19 +447,23 @@ module CML
 
   # Creates a choice event from an array of events.
   # Note: We intentionally keep this generic (Event(T)).
-  # Crystal infers T from the arguments; returning a non-generic Event
+  # Crystal infers T from the arguments; returning a non-generic Even
   # would break sync(evt : Event(T)) which relies on T for the result type.
   def self.choose(evts : Array(Event(T))) : Event(T) forall T
     flat = evts.flat_map { |e| e.is_a?(ChooseEvt(T)) ? e.evts : [e] }
     ChooseEvt(T).new(flat)
   end
 
-
   # Alias used by some specs; same semantics as choose.
   def self.choose_evt(evts : Array(Event(T))) : Event(T) forall T
     choose(evts)
   end
 
+  # Creates an interval timeout event that completes periodically with the symbol `:timeout`.
+  # Useful for creating recurring time-limited operations.
+  def self.timeout_interval(interval : Time::Span) : Event(Symbol)
+    IntervalTimerEvent.new(timer_wheel, interval)
+  end
 
   # Varargs convenience overloads to avoid constructing arrays at call sites.
   def self.choose(*evts : Event(T)) : Event(T) forall T
@@ -403,5 +475,6 @@ module CML
   end
 end
 
+require "./timer_wheel"
 require "./ivar"
 require "./mvar"

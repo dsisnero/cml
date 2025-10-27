@@ -5,7 +5,7 @@
 # Conceptually, an MVar is a channel of capacity 1:
 # - put blocks if full
 # - take blocks if empty
-# - read returns the value without removing it
+# - read returns the value without removing i
 # ---------------------------------------------------------------------
 
 # required by src/cml.cr
@@ -43,18 +43,18 @@ module CML
             break unless taker
             if taker.try_decide(value)
               pick.try_decide(nil)
-              return ->{}
+              return -> { }
             end
           end
-          # No taker committed; try to commit this put by filling the slot
+          # No taker committed; try to commit this put by filling the slo
           if pick.try_decide(nil)
             @value = value
             # Wake all waiting readers (they don't consume)
             readers = @readers
             @readers = Deque(Pick(T)).new
-            readers.each { |r| r.try_decide(value) }
+            readers.each(&.try_decide(value))
           end
-          return ->{}
+          return -> { }
         else
           # Full: enqueue this put until a taker makes room
           entry = {value, pick}
@@ -69,9 +69,9 @@ module CML
         if val = @value
           # Try to commit this take
           if pick.try_decide(val)
-            # Empty the slot
+            # Empty the slo
             @value = nil
-            # If there is a pending put, immediately fill slot with it
+            # If there is a pending put, immediately fill slot with i
             if entry = @put_queue.shift?
               v2, put_pick = entry
               @value = v2
@@ -79,10 +79,10 @@ module CML
               # Wake all readers for the new value
               readers = @readers
               @readers = Deque(Pick(T)).new
-              readers.each { |r| r.try_decide(v2) }
+              readers.each(&.try_decide(v2))
             end
           end
-          return ->{}
+          return -> { }
         else
           # Empty: enqueue taker
           @takers << pick
@@ -95,7 +95,7 @@ module CML
       @mtx.synchronize do
         if val = @value
           pick.try_decide(val)
-          return ->{}
+          return -> { }
         else
           @readers << pick
           return -> { @mtx.synchronize { @readers.delete(pick) rescue nil } }
@@ -128,4 +128,3 @@ module CML
     end
   end
 end
-
