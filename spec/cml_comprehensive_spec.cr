@@ -85,7 +85,7 @@ module CML
         condition = Atomic(Bool).new(false)
 
         guarded = CML.guard do
-          if condition.ge
+          if condition.get
             CML.always(:ready)
           else
             CML.timeout(0.1.seconds)
@@ -99,7 +99,7 @@ module CML
         # Now set condition to true and test again
         condition.set(true)
         guarded2 = CML.guard do
-          if condition.ge
+          if condition.get
             CML.always(:ready)
           else
             CML.timeout(0.1.seconds)

@@ -29,7 +29,7 @@ module CML
     describe "Sync determinism" do
       it "returns exactly once for any event" do
         ch = Chan(Int32).new
-        ev = ch.recv_ev
+        ev = ch.recv_evt
         spawn { CML.sync(ch.send_evt(5)) }
         result1 = CML.sync(ev)
         result2 = CML.sync(CML.always(result1))
