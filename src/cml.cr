@@ -367,6 +367,9 @@ module CML
   end
 
   # Creates a choice event from an array of events.
+  # Note: We intentionally keep this generic (Event(T)).
+  # Crystal infers T from the arguments; returning a non-generic Event
+  # would break sync(evt : Event(T)) which relies on T for the result type.
   def self.choose(evts : Array(Event(T))) : Event(T) forall T
     flat = evts.flat_map { |e| e.is_a?(ChooseEvt(T)) ? e.evts : [e] }
     ChooseEvt(T).new(flat)
@@ -387,5 +390,14 @@ module CML
   def self.choose_evt(evts : Array(E)) : Event(T) forall T, E
     up = evts.map(&.as(Event(T)))
     choose(up)
+  end
+
+  # Varargs convenience overloads to avoid constructing arrays at call sites.
+  def self.choose(*evts : Event(T)) : Event(T) forall T
+    choose(evts.to_a)
+  end
+
+  def self.choose_evt(*evts : Event(T)) : Event(T) forall T
+    choose(evts.to_a)
   end
 end
