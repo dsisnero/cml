@@ -322,27 +322,6 @@ module CML
     end
   end
 
-  # IVar: single-assignment cell (to be implemented later)
-  class IVar(T)
-    def initialize; end
-    def write_evt(value : T) : Event(Nil)
-      NotImplementedEvt(Nil).new("IVar.write_evt")
-    end
-    def read_evt : Event(T)
-      NotImplementedEvt(T).new("IVar.read_evt")
-    end
-  end
-
-  # MVar: synchronized mutable cell (to be implemented later)
-  class MVar(T)
-    def initialize; end
-    def put_evt(value : T) : Event(Nil)
-      NotImplementedEvt(Nil).new("MVar.put_evt")
-    end
-    def take_evt : Event(T)
-      NotImplementedEvt(T).new("MVar.take_evt")
-    end
-  end
 
   # -----------------------
   # Public API
@@ -423,3 +402,6 @@ module CML
     choose(evts.to_a)
   end
 end
+
+require "./ivar"
+require "./mvar"

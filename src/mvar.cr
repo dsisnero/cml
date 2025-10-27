@@ -8,13 +8,14 @@
 # - read returns the value without removing it
 # ---------------------------------------------------------------------
 
-require "./cml"
+# required by src/cml.cr
 
 module CML
   class MVar(T)
     @value : T? = nil
-    @putter : Tuple(T, Pick(Nil))? = nil
+    @put_queue = Deque({T, Pick(Nil)}).new
     @takers = Deque(Pick(T)).new
+    @readers = Deque(Pick(T)).new
     @mtx = Mutex.new
 
     # Event that puts a value if the MVar is empty.
@@ -36,25 +37,36 @@ module CML
       def initialize(@mvar : MVar(T), @value : T); end
 
       def try_register(pick : Pick(Nil)) : Proc(Nil)
-        cancel = ->{}
-        matched = false
+        # Non-blocking: either hand off to a taker, fill the slot atomically if empty,
+        # or enqueue if currently full.
         @mvar.@mtx.synchronize do
           if @mvar.@value.nil?
-            if taker = @mvar.@takers.shift?
-              # A waiting taker: hand off directly
-              taker.try_decide(@value)
-              pick.try_decide(nil)
-              matched = true
-            else
-              # store in slot
-              @mvar.@value = @value
-              @mvar.@putter = {@value, pick}
+            # Try direct handoff to a waiting taker
+            loop do
+              taker = @mvar.@takers.shift?
+              break unless taker
+              if taker.try_decide(@value)
+                pick.try_decide(nil)
+                return ->{}
+              end
+              # If taker was already cancelled, try next
             end
+            # No taker committed; try to commit this put by filling the slot
+            if pick.try_decide(nil)
+              @mvar.@value = @value
+              # Wake all waiting readers (they don't consume)
+              readers = @mvar.@readers
+              @mvar.@readers = Deque(Pick(T)).new
+              readers.each { |r| r.try_decide(@value) }
+            end
+            return ->{}
           else
-            # already full; do nothing until a taker clears
+            # Full: enqueue this put until a taker makes room
+            entry = {@value, pick}
+            @mvar.@put_queue << entry
+            return -> { @mvar.@mtx.synchronize { @mvar.@put_queue.delete(entry) rescue nil } }
           end
         end
-        cancel
       end
     end
 
@@ -62,20 +74,30 @@ module CML
       def initialize(@mvar : MVar(T)); end
 
       def try_register(pick : Pick(T)) : Proc(Nil)
-        cancel = ->{}
         @mvar.@mtx.synchronize do
           if val = @mvar.@value
-            pick.try_decide(val)
-            @mvar.@value = nil
-            if put = @mvar.@putter
-              put[1].try_decide(nil)
-              @mvar.@putter = nil
+            # Try to commit this take
+            if pick.try_decide(val)
+              # Empty the slot
+              @mvar.@value = nil
+              # If there is a pending put, immediately fill slot with it
+              if entry = @mvar.@put_queue.shift?
+                v2, put_pick = entry
+                @mvar.@value = v2
+                put_pick.try_decide(nil)
+                # Wake all readers for the new value
+                readers = @mvar.@readers
+                @mvar.@readers = Deque(Pick(T)).new
+                readers.each { |r| r.try_decide(v2) }
+              end
             end
+            return ->{}
           else
+            # Empty: enqueue taker
             @mvar.@takers << pick
+            return -> { @mvar.@mtx.synchronize { @mvar.@takers.delete(pick) rescue nil } }
           end
         end
-        cancel
       end
     end
 
@@ -83,15 +105,15 @@ module CML
       def initialize(@mvar : MVar(T)); end
 
       def try_register(pick : Pick(T)) : Proc(Nil)
-        cancel = ->{}
         @mvar.@mtx.synchronize do
           if val = @mvar.@value
             pick.try_decide(val)
+            return ->{}
           else
-            @mvar.@takers << pick
+            @mvar.@readers << pick
+            return -> { @mvar.@mtx.synchronize { @mvar.@readers.delete(pick) rescue nil } }
           end
         end
-        cancel
       end
     end
   end
