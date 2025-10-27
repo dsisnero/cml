@@ -6,11 +6,21 @@ module CML
     getter? running : Bool
 
     # Represents a scheduled timer.
-    record TimerEntry,
-      id : UInt64,
-      callback : Proc(Nil),
-      expiration : UInt64,
-      interval : UInt64? = nil
+    class TimerEntry
+      getter id : UInt64
+      getter callback : Proc(Nil)
+      getter expiration : UInt64
+      getter interval : UInt64?
+      getter? cancelled : Bool
+
+      def initialize(@id, @callback, @expiration, @interval)
+        @cancelled = false
+      end
+
+      def cancel!
+        @cancelled = true
+      end
+    end
 
     getter wheel_config : Array(Tuple(Int32, Int32))
 
@@ -35,6 +45,7 @@ module CML
       @wheel_shifts = [] of Int32
       @pending_timers = [] of TimerEntry
       @next_id = 0_u64
+      @timer_locations = Hash(UInt64, TimerEntry).new
       @mutex = Mutex.new
       @running = true
 
@@ -133,22 +144,17 @@ module CML
       )
 
       add_to_wheel_internal(entry) || @pending_timers << entry
+      @timer_locations[timer_id] = entry
       timer_id
     end
 
     private def cancel_internal(timer_id : UInt64) : Bool
-      found = false
-      @wheel_slots.each do |wheel|
-        wheel.each do |slot|
-          original_size = slot.size
-          slot.reject! { |entry| entry.id == timer_id }
-          found = true if slot.size < original_size
-        end
+      if entry = @timer_locations.delete(timer_id)
+        entry.cancel!
+        true
+      else
+        false
       end
-      original_pending_size = @pending_timers.size
-      @pending_timers.reject! { |entry| entry.id == timer_id }
-      found = true if @pending_timers.size < original_pending_size
-      found
     end
 
     private def advance_internal(time : Time::Span)
@@ -166,6 +172,7 @@ module CML
       @running = false
       @wheel_slots.each(&.clear)
       @pending_timers.clear
+      @timer_locations.clear
     end
 
     private def stats_internal
@@ -234,6 +241,11 @@ module CML
       remaining = [] of TimerEntry
 
       slot.each do |entry|
+        if entry.cancelled?
+          # Skip and remove cancelled timers
+          next
+        end
+
         if entry.expiration <= @current_time
           expired << entry
         else
@@ -244,12 +256,17 @@ module CML
       @wheel_slots[level][slot_index] = remaining
 
       expired.each do |entry|
+        # Double-check cancellation, as it could have happened
+        # after being moved to the expired list.
+        next if entry.cancelled?
+
         begin
           entry.callback.call
         rescue ex
           # Log or handle callback errors
         end
 
+        # Reschedule if it's an interval timer
         if interval = entry.interval
           new_entry = TimerEntry.new(
             id: entry.id,
@@ -257,7 +274,14 @@ module CML
             expiration: @current_time + interval,
             interval: interval
           )
-          add_to_wheel_internal(new_entry) || @pending_timers << new_entry
+          if add_to_wheel_internal(new_entry)
+            @timer_locations[entry.id] = new_entry
+          else
+            @pending_timers << new_entry
+          end
+        else
+          # One-time timer, remove from locations
+          @timer_locations.delete(entry.id)
         end
       end
     end
@@ -268,6 +292,7 @@ module CML
 
       @wheel_slots[level][slot_index] = [] of TimerEntry
       slot.each do |entry|
+        next if entry.cancelled?
         add_to_wheel_internal(entry) || @pending_timers << entry
       end
     end
