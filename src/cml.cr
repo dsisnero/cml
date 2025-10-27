@@ -373,7 +373,6 @@ module CML
 
     def try_register(pick : Pick(Symbol)) : Proc(Nil)
       @pick = pick
-      
       # Schedule the timer with the wheel
       @timer_id = @timer_wheel.schedule(@duration) do
         # The pick might be nil if cancelled immediately
@@ -398,7 +397,6 @@ module CML
 
     def try_register(pick : Pick(Symbol)) : Proc(Nil)
       @pick = pick
-      
       # Schedule the interval timer with the wheel
       @timer_id = @timer_wheel.schedule_interval(@interval) do
         @pick.try &.try_decide(:timeout)
