@@ -53,9 +53,9 @@ module CML
         ) { |x| x }
 
         # Race with timeout, expect cancellation path
-        choice = CML.choose_evt([
+        choice = CML.choose([
           wrapped_nack,
-          CML.timeout(0.01.seconds),
+          CML.wrap(CML.timeout(0.01.seconds)) { |_t| -1 },
         ])
         CML.sync(choice)
         sleep 0.05.seconds

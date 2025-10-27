@@ -407,22 +407,12 @@ module CML
     ChooseEvt(T).new(flat)
   end
 
-  # Overload to accept arrays of any Event subtype (e.g., Array(RecvEvt(T))).
-  def self.choose(evts : Array(E)) : Event(T) forall T, E
-    up = evts.map(&.as(Event(T)))
-    choose(up)
-  end
 
   # Alias used by some specs; same semantics as choose.
   def self.choose_evt(evts : Array(Event(T))) : Event(T) forall T
     choose(evts)
   end
 
-  # Overload for choose_evt with subtype arrays.
-  def self.choose_evt(evts : Array(E)) : Event(T) forall T, E
-    up = evts.map(&.as(Event(T)))
-    choose(up)
-  end
 
   # Varargs convenience overloads to avoid constructing arrays at call sites.
   def self.choose(*evts : Event(T)) : Event(T) forall T
