@@ -292,11 +292,7 @@ module CML
   class ChooseEvt(T) < Event(T)
     getter evts : Array(Event(T))
     
-    def initialize(evts : Array(Event(T)))
-      @evts = evts
-    end
-
-    # Allow construction from arrays of Event subtypes (e.g., Array(RecvEvt(T))).
+    # Accept arrays of Event or any Event subtype (e.g., Array(RecvEvt(T))).
     def initialize(evts : Array(E)) forall E
       @evts = evts.map(&.as(Event(T)))
     end
