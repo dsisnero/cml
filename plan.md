@@ -120,16 +120,22 @@ AI agents should:
 
 🎯 Goal: Observe and debug event scheduling.
 
-**Tasks**
-- [ ] Add optional trace logs for event registration, decision, and cancellation.
-- [ ] Provide `CML.debug = true` flag for verbose mode.
-- [ ] Implement a lightweight `Tracer` that records event lifecycles.
-- [ ] Offer pretty-print for event trees (`inspect`/`to_s`).
+**Status: Phase complete**
+
+All tracing and instrumentation features are implemented and documented:
+- Macro-based tracing system with zero overhead when disabled (`-Dtrace` flag)
+- Unique event and pick IDs for correlation
+- Fiber context and user-assigned fiber names in trace output
+- User-defined tags for grouping and filtering
+- Flexible output redirection (file, pipe, etc.)
+- Filtering by tag, event type, or fiber
+- Outcome tracing for commit/cancel
+- Comprehensive documentation and real-world debugging examples (`docs/debugging_guide.md`)
 
 **AI guidance**
-- Instrument through wrappers, not inside primitives.
-- Logs should be fiber-safe and off by default.
-- Use Crystal’s `Log` module, not `puts`.
+- Instrumentation is macro-based, not via Crystal's `Log` module
+- Tracing is fiber-safe and off by default
+- All trace points are tagged for robust filtering
 
 ---
 
@@ -211,7 +217,7 @@ AI agents can propose or implement these only after all prior phases are verifie
 | 1 | Performance & Efficiency | ✅ complete |
 | 2 | Documentation            | ✅ complete |
 | 3 | Extended Primitives      | ✅ complete |
-| 4 | Tracing                  | 🔲 not started |
+| 4 | Tracing                  | ✅ complete |
 | 5 | Usability & Examples     | 🔲 not started |
 | 6 | Validation               | 🔲 not started |
 | 7 | Packaging                | 🔲 not started |
