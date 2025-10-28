@@ -125,6 +125,9 @@ module CML
   # Basic events
   # -----------------------
   # An event that always succeeds immediately with a fixed value.
+  # An event that always succeeds immediately with a fixed value.
+  # Atomicity: Registration is non-blocking and always completes instantly.
+  # Fiber behavior: No fiber is blocked; result is available immediately.
   class AlwaysEvt(T) < Event(T)
     def initialize(@value : T); end
 
@@ -145,6 +148,9 @@ module CML
   # An event that never succeeds.
   # This is useful for creating events that should never complete,
   # such as in timeout scenarios or as placeholders.
+  # An event that never succeeds.
+  # Atomicity: Registration is non-blocking and never completes.
+  # Fiber behavior: Any fiber waiting on this event will block forever.
   class NeverEvt(T) < Event(T)
     # Registers with a pick but never decides it.
     # Returns an empty cancellation procedure.
@@ -160,6 +166,10 @@ module CML
   # Channels support both send and receive operations as events.
   #
   # @type T The type of values communicated through this channel
+  # A channel for communicating values between concurrent processes.
+  # Channels support both send and receive operations as events.
+  # Atomicity: Registration is non-blocking; rendezvous is atomic.
+  # Fiber behavior: Fibers block only in sync, not in registration.
   class Chan(T)
     @send_q = Deque({T, Pick(Nil)}).new
     @recv_q = Deque(Pick(T)).new
@@ -241,6 +251,10 @@ module CML
 
   # An event representing a send operation on a channel.
   # Completes when the value is successfully sent.
+  # An event representing a send operation on a channel.
+  # Completes when the value is successfully sent.
+  # Atomicity: Registration is non-blocking; commit is atomic.
+  # Fiber behavior: Sender fiber blocks only in sync, not in registration.
   class SendEvt(T) < Event(Nil)
     def initialize(@ch : Chan(T), @val : T); end
 
@@ -252,6 +266,10 @@ module CML
 
   # An event representing a receive operation on a channel.
   # Completes when a value is successfully received.
+  # An event representing a receive operation on a channel.
+  # Completes when a value is successfully received.
+  # Atomicity: Registration is non-blocking; commit is atomic.
+  # Fiber behavior: Receiver fiber blocks only in sync, not in registration.
   class RecvEvt(T) < Event(T)
     def initialize(@ch : Chan(T)); end
 
@@ -266,6 +284,10 @@ module CML
   # -----------------------
   # An event that completes after a specified duration with the symbol `:timeout`.
   # Useful for creating time-limited operations in conjunction with `choose`.
+  # An event that completes after a specified duration with the symbol `:timeout`.
+  # Useful for creating time-limited operations in conjunction with `choose`.
+  # Atomicity: Registration is non-blocking; commit is atomic when timer fires.
+  # Fiber behavior: Fiber blocks only in sync, not in registration.
   class TimeoutEvt < Event(Symbol)
     # Creates a new timeout event.
     def initialize(@duration : Time::Span); end
@@ -287,6 +309,10 @@ module CML
   #
   # @type A The result type of the inner event
   # @type B The result type after transformation
+  # An event that transforms the result of another event.
+  # The transformation function is applied after the inner event completes.
+  # Atomicity: Registration is non-blocking; commit is atomic after inner event.
+  # Fiber behavior: Fiber blocks only in sync, not in registration.
   class WrapEvt(A, B) < Event(B)
     def initialize(@inner : Event(A), &@f : A -> B); end
 
@@ -320,6 +346,9 @@ module CML
   #
   # @type A The result type of the inner event
   # @type B The result type after transformation
+  # Like wrap, but runs an abort callback if the event is cancelled (loses a choose).
+  # Atomicity: Registration is non-blocking; commit is atomic after inner event.
+  # Fiber behavior: Fiber blocks only in sync, not in registration. Abort callback runs if cancelled.
   class WrapAbortEvt(A, B) < Event(B)
     def initialize(@inner : Event(A), @on_abort : -> Nil, &@f : A -> B); end
 
@@ -360,6 +389,10 @@ module CML
   # Useful for creating events that depend on runtime state.
   #
   # @type T The result type of the guarded event
+  # An event that defers creation of its inner event until synchronization time.
+  # Useful for creating events that depend on runtime state.
+  # Atomicity: Registration is non-blocking; commit is atomic after inner event.
+  # Fiber behavior: Fiber blocks only in sync, not in registration.
   class GuardEvt(T) < Event(T)
     @block : Proc(Event(T))
 
@@ -390,6 +423,10 @@ module CML
   # The callback is executed only if this event is registered but not chosen.
   #
   # @type T The result type of the inner event
+  # An event that runs a callback when it loses in a choice.
+  # The callback is executed only if this event is registered but not chosen.
+  # Atomicity: Registration is non-blocking; commit is atomic after inner event.
+  # Fiber behavior: Fiber blocks only in sync, not in registration. Cancel callback runs if not chosen.
   class NackEvt(T) < Event(T)
     # Creates a new nack event.
     def initialize(@inner : Event(T), &@on_cancel : -> Nil); end
@@ -422,6 +459,10 @@ module CML
   # An event that represents a choice between multiple events.
   # The first event to complete wins and decides the pick.
   # All other events are cancelled.
+  # An event that represents a choice between multiple events.
+  # The first event to complete wins and decides the pick. All others are cancelled.
+  # Atomicity: Registration is non-blocking; commit is atomic for the winner.
+  # Fiber behavior: Fiber blocks only in sync, not in registration. All losers are cancelled.
   class ChooseEvt(T) < Event(T)
     getter evts : Array(Event(T))
 
@@ -475,6 +516,9 @@ module CML
   # Timer Wheel Events
   # -----------------------
   # Timer event that uses the TimerWheel for efficient timeout management
+  # Timer event that uses the TimerWheel for efficient timeout management.
+  # Atomicity: Registration is non-blocking; commit is atomic when timer fires.
+  # Fiber behavior: Fiber blocks only in sync, not in registration.
   class TimerEvent < Event(Symbol)
     @timer_id : UInt64?
     @pick : Pick(Symbol)?
@@ -498,6 +542,9 @@ module CML
       }
     end
   end # Interval timer event for recurring timeouts
+  # Interval timer event for recurring timeouts.
+  # Atomicity: Registration is non-blocking; commit is atomic when timer fires.
+  # Fiber behavior: Fiber blocks only in sync, not in registration.
   class IntervalTimerEvent < Event(Symbol)
     @timer_id : UInt64?
     @pick : Pick(Symbol)?

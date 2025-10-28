@@ -59,26 +59,38 @@ The runtime is now a small, composable, fully functional Concurrent ML kernel in
 
 ---
 
+
+
 ## 3. Phase 2 — Documentation & Developer Clarity
 
 🎯 Goal: Make the system easy to understand and extend by humans and AI agents.
 
-**Tasks**
-- [ ] Add `README.md` (for humans): overview, install, examples
-- [ ] Add `docs/overview.md` (for developers): deep dive into event semantics
-- [ ] Expand `spec/` suite with coverage for:
-  - [✅] Nested `choose`
-  - [✅] Re-entrant guards
-  - [✅] Multiple concurrent channels
-  - [✅] Timeout cancellation stress
-- [ ] Annotate each event type with docstrings describing its atomicity and fiber behavior
-- [ ] Add diagrams for `Pick`, `choose`, and `Chan` flow
+**Status: All tasks complete**
+- [✅] Add `README.md` (for humans): overview, install, examples
+- [✅] Add `docs/overview.md` (for developers): deep dive into event semantics
+- [✅] Annotate each event type with docstrings describing its atomicity and fiber behavior
+- [✅] Add diagrams for `Pick`, `choose`, and `Chan` flow
 
 **AI guidance**
 AI agents should:
 - Generate docs and examples in Markdown.
 - Keep technical accuracy (avoid anthropomorphism).
 - Never insert blocking examples.
+
+---
+
+## 3a. Phase 2a — Test Coverage
+
+🎯 Goal: Ensure all core and advanced behaviors are covered by specs.
+
+**Tasks**
+- [✅] Nested `choose`
+- [✅] Re-entrant guards
+- [✅] Multiple concurrent channels
+- [✅] Timeout cancellation stress
+
+**AI guidance**
+- Add or update specs to cover all concurrency and cancellation edge cases.
 
 ---
 
@@ -197,7 +209,7 @@ AI agents can propose or implement these only after all prior phases are verifie
 |--------|------------------------|--------|
 | 0 | Stable Core              | ✅ complete |
 | 1 | Performance & Efficiency | ✅ complete |
-| 2 | Documentation            | 🟡 in progress |
+| 2 | Documentation            | ✅ complete |
 | 3 | Extended Primitives      | ✅ complete |
 | 4 | Tracing                  | 🔲 not started |
 | 5 | Usability & Examples     | 🔲 not started |
