@@ -70,7 +70,34 @@ shards install
 
 ---
 
-## 3. Quick Examples
+## 3. Quickstart
+
+### After/Timeout Helper
+
+```crystal
+CML.after(1.second) { puts "Timeout reached!" }
+```
+
+### Spawning a Worker and Waiting for Result
+
+```crystal
+result_evt = CML.spawn_evt { compute_something() }
+CML.sync(result_evt)
+```
+
+### Pipeline with Channels
+
+```crystal
+ch1 = CML::Chan(Int32).new
+ch2 = CML::Chan(String).new
+
+CML.after(0.seconds) { ch1.send(42) }
+CML.after(0.seconds) { ch2.send("done") }
+
+CML.sync(CML.choose([ch1.recv, ch2.recv]))
+```
+
+See the [Cookbook](docs/cookbook.md) for more idioms and patterns.
 
 ### Basic Channel Communication
 
@@ -99,17 +126,19 @@ evt = CML.choose([
 puts CML.sync(evt)  # => "timeout" if no message arrives
 ```
 
-### Event Composition
+### Event Composition & DSL Helpers
 
 ```crystal
-# Transform event results with wrap
 string_evt = CML.wrap(ch.recv_evt) { |x| "Received: #{x}" }
-
-# Defer event creation with guard
 lazy_evt = CML.guard { expensive_computation_evt }
-
-# Cleanup on cancellation with nack
 safe_evt = CML.nack(ch.recv_evt) { puts "Event was cancelled!" }
+
+# After/Timeout helper
+CML.after(2.seconds) { puts "done after 2s" }
+
+# Spawn a fiber and get result as event
+evt = CML.spawn_evt { 123 }
+CML.sync(evt) # => 123
 ```
 
 ---
@@ -121,6 +150,8 @@ safe_evt = CML.nack(ch.recv_evt) { puts "Event was cancelled!" }
 - `CML.always(value)` - Event that always succeeds
 - `CML.never` - Event that never succeeds
 - `CML.timeout(duration)` - Time-based event
+- `CML.after(span) { ... }` - Run a block after a delay (helper)
+- `CML.spawn_evt { ... }` - Run a block in a fiber, return result as event (helper)
 
 ### Combinators
 - `CML.choose(events)` - Race multiple events
@@ -173,6 +204,7 @@ end
 - [**Overview & Architecture**](docs/overview.md) - Deep dive into event semantics
 - [**API Reference**](docs/api.md) - Complete API documentation
 - [**Examples**](examples/) - Working code examples
+- [**Cookbook**](docs/cookbook.md) - Common idioms and patterns
 
 ---
 

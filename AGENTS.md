@@ -53,7 +53,22 @@ When editing or generating code in this repository, AI assistants should:
 
 | File | Description |
 |------|--------------|
-| `src/cml.cr` | Core implementation of CML runtime (Events, Pick, Chan). |
+| `src/cml.cr` | Core implementation of CML runtime (Events, Pick, Chan, DSL helpers). |
+---
+
+## 6. Phase 5: Usability & DSL Helpers
+
+Phase 5 introduces a usability layer to CML:
+- Simple DSL helpers: `CML.after(span) { ... }`, `CML.spawn_evt { ... }`
+- Example-driven cookbook: `docs/cookbook.md`
+- Expanded examples: see `examples/` for chat, pipeline, and timeout worker demos
+- Quickstart and helper docs in `README.md`
+- Example-driven specs for helpers
+
+AI agents should:
+- Ensure all helpers are covered by specs
+- Keep documentation and examples up to date
+- Review API ergonomics for clarity and minimalism
 | `src/trace_macro.cr` | Macro-based tracing system for CML events and fiber context. |
 | `spec/cml2_spec.cr` | Basic behavior verification (choose, timeout, guard, nack). |
 | `spec/smoke_test.cr` | Minimal smoke test verifying choose/timeout correctness. |

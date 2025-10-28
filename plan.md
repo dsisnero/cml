@@ -139,20 +139,24 @@ All tracing and instrumentation features are implemented and documented:
 
 ---
 
+
 ## 6. Phase 5 — Usability Layer & Examples
 
 🎯 Goal: Make it easy to use in small Crystal programs.
 
-**Deliverables**
-- [ ] `examples/` folder: chat demo, pipeline, timeout worker.
-- [ ] Simple DSL helpers:
-  - `CML.after(span) { ... }`
-  - `CML.spawn_evt { ... }`
-- [ ] Cookbook with idioms for concurrent coordination.
+**In Progress:**
+- [x] `examples/` folder: chat demo, pipeline, timeout worker (starter files present)
+- [x] Simple DSL helpers: `CML.after(span) { ... }`, `CML.spawn_evt { ... }`
+- [x] Cookbook with idioms for concurrent coordination (`docs/cookbook.md`)
+- [ ] Example-driven tests for helpers
+- [ ] Improved error messages and docs for DSL
+- [ ] Quickstart and cookbook in README
+- [ ] API ergonomics review
 
 **AI guidance**
-- Demonstrate idiomatic fiber usage.
-- Each example should terminate cleanly.
+- Demonstrate idiomatic fiber usage
+- Each example should terminate cleanly
+- Helpers and idioms should be discoverable and documented
 
 ---
 

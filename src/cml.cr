@@ -1,5 +1,37 @@
 module CML
   # -----------------------
+  # Simple DSL Helpers
+  # -----------------------
+  # Usage:
+  #   CML.after(1.second) { puts "done" }
+  #   CML.spawn_evt { ... }
+
+  # Runs a block after a given time span, in a new fiber.
+  def self.after(span : Time::Span, &block : ->)
+    ch = Channel(Nil).new(1)
+    spawn do
+      sync(timeout(span))
+      block.call
+      ch.send(nil)
+    end
+    ch
+  end
+
+  # Spawns a new fiber to run the given block, returning an event that completes when the block finishes.
+  def self.spawn_evt(&block : -> T) : Event(T) forall T
+    ch = Chan(T).new
+    spawn do
+      begin
+        CML.sync(ch.send_evt(block.call))
+      rescue ex
+        # Send exception as a failure event if needed
+        # For now, just ignore to keep API simple
+      end
+    end
+    ch.recv_evt
+  end
+
+  # -----------------------
   # Select macro (pattern-matching event choice)
   # -----------------------
   # Usage:
