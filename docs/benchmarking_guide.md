@@ -177,7 +177,7 @@ require "../src/cml"
 module CML::Benchmarks
   def self.benchmark_my_feature
     puts "=== My Feature Benchmark ==="
-    
+
     Benchmark.ips do |x|
       x.report("my_operation") do
         # Your benchmark code here
