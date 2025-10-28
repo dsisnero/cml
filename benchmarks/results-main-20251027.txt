@@ -1,0 +1,23 @@
+--- Benchmark: Event Creation Overhead ---
+ AlwaysEvt 208.49M (  4.80ns) (± 0.61%)  16.0B/op   1.01× slower
+  NeverEvt 210.33M (  4.75ns) (± 0.41%)  16.0B/op        fastest
+TimeoutEvt 167.88M (  5.96ns) (± 0.48%)  32.0B/op   1.25× slower
+   SendEvt 157.59M (  6.35ns) (± 0.89%)  32.0B/op   1.33× slower
+   RecvEvt 158.92M (  6.29ns) (± 0.96%)  32.0B/op   1.32× slower
+   WrapEvt  85.92M ( 11.64ns) (± 0.40%)  64.0B/op   2.45× slower
+  GuardEvt  83.84M ( 11.93ns) (± 0.78%)  64.0B/op   2.51× slower
+
+--- Benchmark: Sync on AlwaysEvt ---
+sync(AlwaysEvt)  17.42M ( 57.42ns) (± 0.47%)  304B/op  fastest
+
+--- Benchmark: Choose with AlwaysEvt ---
+choose(Always, Never)  16.79M ( 59.55ns) (± 3.27%)  304B/op  fastest
+
+--- Benchmark: Channel Rendezvous (Single Fiber) ---
+rendezvous   2.09M (477.65ns) (± 0.61%)  1.92kB/op  fastest
+
+--- Benchmark: Channel Rendezvous (Two Fibers) ---
+rendezvous (2 fibers)   4.14M (241.28ns) (± 0.51%)  896B/op  fastest
+
+--- Benchmark: Timeout Creation and Cancellation ---
+schedule+cancel   8.25M (121.28ns) (±40.98%)  486B/op  fastest

@@ -28,7 +28,7 @@ class Pick(T)
   @winner : T? = nil
   @done = Channel(Nil).new(1)
   @decided = Atomic(Bool).new(false)
-  
+
   def try_decide(value : T) : Bool
     return false if @decided.get
     if @decided.compare_and_set(false, true)

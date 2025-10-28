@@ -41,7 +41,7 @@ end
 # =================================================================
 puts "\n--- Benchmark: Choose with AlwaysEvt ---"
 Benchmark.ips do |x|
-  choice = CML.choose(CML.always(1), CML.never(Int32))
+  choice = CML.choose([CML.always(1), CML.never(Int32)])
   x.report("choose(Always, Never)") { CML.sync(choice) }
 end
 
@@ -61,10 +61,10 @@ Benchmark.ips do |x|
   x.report("rendezvous") do
     # In a single fiber, we need to use a guard to defer one of the ops.
     # We also wrap the events to have a common return type for `choose`.
-    choice = CML.choose(
+    choice = CML.choose([
       CML.wrap(send_evt) { |_| :sent },
-      CML.guard { CML.wrap(recv_evt) { |_| :received } }
-    )
+      CML.guard { CML.wrap(recv_evt) { |_| :received } },
+    ])
     CML.sync(choice)
   end
 end

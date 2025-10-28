@@ -1,3 +1,24 @@
+## 10. Tracing & Instrumentation
+
+CML includes a macro-based tracing system for debugging and performance analysis:
+
+- **Zero-overhead when disabled**: Tracing is compiled out unless `-Dtrace` is passed.
+- **Event IDs**: Every event and pick has a unique ID for correlation.
+- **Fiber context**: Trace output includes the current fiber (or user-assigned fiber name).
+- **Outcome tracing**: Commit/cancel outcomes are logged for all key CML operations.
+- **User-defined tags**: `CML.trace` accepts an optional `tag:` argument for grouping/filtering.
+- **Flexible output**: Trace output can be redirected to any IO (file, pipe, etc) via `CML::Tracer.set_output(io)`.
+- **Filtering**: Tracer can filter by tag, event type, or fiber using `set_filter_tags`, `set_filter_events`, and `set_filter_fibers`.
+
+**Example:**
+
+```crystal
+CML.trace "Chan.register_send", value, pick, tag: "chan"
+CML::Tracer.set_output(File.open("trace.log", "w"))
+CML::Tracer.set_filter_tags(["chan", "pick"])
+```
+
+See `src/trace_macro.cr` for details.
 # Crystal Concurrent ML (CML)
 
 A minimal, composable, and correct **Concurrent ML runtime for Crystal** —
@@ -172,3 +193,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and [AGENTS.md
 ## 9. License
 
 MIT License - see [LICENSE](LICENSE) file for details.
+
+---
+
+## 11. Debugging Guide
+
+See [docs/debugging_guide.md](docs/debugging_guide.md) for practical tips on using tracing, tags, and filtering to debug slow, stuck, or incorrect code in CML.

@@ -21,10 +21,9 @@ module CML
       wrap(event) { |v| idx = i; result = v; v }
     end.to_a
     sync(choose(wrapped))
-  handlers[idx.nil? ? 0 : idx.as(Int32)].call(result)
+    handlers[idx.nil? ? 0 : idx.as(Int32)].call(result)
   end
 
-  # ...existing code...
   # Global timer wheel instance for efficient timeout management.
   # The timer wheel automatically starts its own processing fiber.
   class_getter timer_wheel : TimerWheel = TimerWheel.new
@@ -38,6 +37,7 @@ module CML
   # @type T The type of value this pick can decide
   class Pick(T)
     @winner : T? = nil
+    @event_id : Int64 = CML::Tracer.next_event_id
     @done = Channel(Nil).new(1)
     @decided = Atomic(Bool).new(false)
     @cancellations = Array(Proc(Nil)).new
@@ -67,10 +67,11 @@ module CML
         end
       end
 
-      # Run cancellations outside the lock. This is the key to avoiding
-      # the re-entrant lock deadlocks seen in previous attempts.
       if made_decision
+        CML.trace "Pick.committed", @event_id, value, tag: "pick"
         cancellations_to_run.each &.call
+      else
+        CML.trace "Pick.cancelled", @event_id, tag: "pick"
       end
 
       made_decision
@@ -108,6 +109,9 @@ module CML
   # @type T The type of value this event produces
   # @abstract
   abstract class Event(T)
+    # Unique event id for tracing
+    property event_id : Int64 = CML::Tracer.next_event_id
+
     # Attempts to register this event with a pick (decision point).
     # Returns a cancellation procedure that should be called if the event is no longer needed.
     abstract def try_register(pick : Pick(T)) : Proc(Nil)
@@ -192,6 +196,7 @@ module CML
     # Otherwise, the send is queued until a receiver arrives.
     def register_send(value : T, pick : Pick(Nil)) : Proc(Nil)
       offer = {value, pick}
+      CML.trace "Chan.register_send", value, pick, pick.@event_id, tag: "chan"
 
       # Defer decision-making to outside the lock
       recv_pick_to_decide : Pick(T)? = nil
@@ -210,17 +215,23 @@ module CML
       if recv_pick = recv_pick_to_decide
         recv_pick.try_decide(value)
         pick.try_decide(nil)
+        CML.trace "Chan.send_committed", value, pick, pick.@event_id, tag: "chan"
         return -> { } # Rendezvous complete, no-op cancel
       end
 
       # Return a cancellation proc that removes from the send queue
-      -> { @mtx.synchronize { @send_q.delete(offer) rescue nil } }
+      -> {
+        @mtx.synchronize { @send_q.delete(offer) rescue nil }
+        CML.trace "Chan.send_cancelled", value, pick, pick.@event_id, tag: "chan"
+      }
     end
 
     # Registers a receive operation with the channel.
     # If a sender is waiting, the value is immediately received.
     # Otherwise, the receive is queued until a sender arrives.
     def register_recv(pick : Pick(T)) : Proc(Nil)
+      CML.trace "Chan.register_recv", self, pick, pick.@event_id, tag: "chan"
+
       offer = pick
 
       # Defer decision-making to outside the lock
@@ -241,11 +252,15 @@ module CML
         value, send_pick = pair
         send_pick.try_decide(nil)
         pick.try_decide(value)
+        CML.trace "Chan.recv_committed", pick, value, pick.@event_id, tag: "chan"
         return -> { } # Rendezvous complete, no-op cancel
       end
 
       # Return a cancellation proc that removes from the receive queue
-      -> { @mtx.synchronize { @recv_q.delete(offer) rescue nil } }
+      -> {
+        @mtx.synchronize { @recv_q.delete(offer) rescue nil }
+        CML.trace "Chan.recv_cancelled", pick, pick.@event_id, tag: "chan"
+      }
     end
   end
 
@@ -475,10 +490,13 @@ module CML
     # The first event to complete decides the pick,
     # and all other events are cancelled.
     def try_register(pick : Pick(T)) : Proc(Nil)
+      CML.trace "ChooseEvt.try_register", self, pick, @event_id, tag: "choose"
+
       # --- Polling Optimization ---
       @evts.each do |evt|
         if value = evt.poll
           if pick.try_decide(value)
+            CML.trace "ChooseEvt.committed", self, pick, @event_id, tag: "choose"
             return -> { } # Immediate win, no cancellation needed.
           end
         end
@@ -495,7 +513,9 @@ module CML
       # The cancellation proc for the ChooseEvt itself is a no-op.
       # The pick handles cleanup of child events. This is needed
       # for nested choose scenarios where a parent choose cancels this one.
-      -> { }
+      -> {
+        CML.trace "ChooseEvt.cancelled", self, pick, @event_id, tag: "choose"
+      }
     end
   end
 
@@ -612,19 +632,24 @@ module CML
   # Creates an event that transforms the result of another event.
   # The transformation is applied after the inner event completes.
   def self.wrap(evt : Event(A), &block : A -> B) : Event(B) forall A, B
-    WrapEvt(A, B).new(evt, &block)
+    wrap_evt = WrapEvt(A, B).new(evt, &block)
+    wrap_evt.event_id = evt.event_id
+    wrap_evt
   end
 
   # Creates an event that defers creation of its inner event until synchronization time.
   # Useful for creating events that depend on runtime state.
   def self.guard(&block : -> Event(T)) : Event(T) forall T
-    GuardEvt(T).new(&block)
+    evt = GuardEvt(T).new(&block)
+    evt
   end
 
   # Creates an event that runs a callback when it loses in a choice.
   # The callback is executed only if this event is registered but not chosen.
   def self.nack(evt : Event(T), &block : -> Nil) : Event(T) forall T
-    NackEvt(T).new(evt, &block)
+    nack_evt = NackEvt(T).new(evt, &block)
+    nack_evt.event_id = evt.event_id
+    nack_evt
   end
 
   # Creates a choice event from an array of events.
@@ -633,7 +658,8 @@ module CML
   # would break sync(evt : Event(T)) which relies on T for the result type.
   def self.choose(evts : Array(Event(T))) : Event(T) forall T
     flat = evts.flat_map { |e| e.is_a?(ChooseEvt(T)) ? e.evts : [e] }
-    ChooseEvt(T).new(flat)
+    evt = ChooseEvt(T).new(flat)
+    evt
   end
 
   # Alias used by some specs; same semantics as choose.
@@ -678,3 +704,4 @@ end
 require "./timer_wheel"
 require "./ivar"
 require "./mvar"
+require "./trace_macro"

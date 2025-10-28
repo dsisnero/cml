@@ -254,6 +254,72 @@ crystal run --release --stats benchmarks/performance_benchmarks.cr
 valgrind --leak-check=full ./benchmarks/performance_benchmarks
 ```
 
+---
+
+## Debugging Performance and Bugs with Tracing
+
+CML provides a powerful macro-based tracing system to help you find slow or buggy code paths. Tracing is zero-overhead when disabled, and highly configurable when enabled.
+
+### Enabling Tracing
+
+Compile with the `-Dtrace` flag to enable all trace points:
+
+```bash
+crystal run benchmarks/cml_benchmarks.cr -Dtrace
+```
+
+### Using User-Defined Tags
+
+You can add a `tag:` argument to any `CML.trace` call to group or filter trace output. For example:
+
+```crystal
+CML.trace "Chan.register_send", value, pick, tag: "chan"
+CML.trace "Pick.committed", event_id, value, tag: "pick"
+```
+
+This lets you mark specific operations or code regions for later analysis.
+
+### Filtering Trace Output
+
+You can filter trace output by tag, event type, or fiber:
+
+```crystal
+# Only show traces with the tag "chan" or "pick"
+CML::Tracer.set_filter_tags(["chan", "pick"])
+
+# Only show traces for a specific event type
+CML::Tracer.set_filter_events(["Chan.register_send", "Pick.committed"])
+
+# Only show traces for a specific fiber (by name or id)
+CML::Tracer.set_filter_fibers(["my_fiber_name"])
+```
+
+### Redirecting Trace Output
+
+By default, trace output goes to STDOUT. You can redirect it to a file or any IO:
+
+```crystal
+CML::Tracer.set_output(File.open("trace.log", "w"))
+```
+
+### Example: Tracing a Suspect Operation
+
+```crystal
+CML.trace "Chan.register_send", value, pick, tag: "chan"
+CML::Tracer.set_filter_tags(["chan"])
+
+
+# Run your code and inspect trace.log for slow or unexpected operations
+```
+
+### Best Practices
+- Use tags to isolate and group related trace points
+- Filter by tag or event to reduce noise and focus on the problem
+- Use fiber names to track specific concurrent operations
+- Always disable tracing in production for zero overhead
+
+See `src/trace_macro.cr` and the README for more details.
+
 ## Next Steps
 
 Based on Phase 2 goals, the following benchmarking improvements are planned:

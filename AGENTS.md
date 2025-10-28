@@ -54,10 +54,34 @@ When editing or generating code in this repository, AI assistants should:
 | File | Description |
 |------|--------------|
 | `src/cml.cr` | Core implementation of CML runtime (Events, Pick, Chan). |
+| `src/trace_macro.cr` | Macro-based tracing system for CML events and fiber context. |
 | `spec/cml2_spec.cr` | Basic behavior verification (choose, timeout, guard, nack). |
 | `spec/smoke_test.cr` | Minimal smoke test verifying choose/timeout correctness. |
 | `README.md` | Public overview of the CML runtime. |
 | `AGENTS.md` | This guidance document. |
+---
+
+## 5. Tracing and Instrumentation
+
+CML provides a macro-based tracing system for debugging, performance analysis, and event visualization. Key features:
+
+- **Zero-overhead when disabled**: Tracing code is compiled out unless `-Dtrace` is passed.
+- **Event IDs**: Every event and pick is assigned a unique ID for correlation.
+- **Fiber context**: Trace output includes the current fiber (or user-assigned fiber name).
+- **Outcome tracing**: Commit/cancel outcomes are logged for all key CML operations.
+- **User-defined tags**: `CML.trace` accepts an optional `tag:` argument for grouping/filtering.
+- **Flexible output**: Trace output can be redirected to any IO (file, pipe, etc) via `CML::Tracer.set_output(io)`.
+- **Filtering**: Tracer can filter by tag, event type, or fiber using `set_filter_tags`, `set_filter_events`, and `set_filter_fibers`.
+
+**Example usage:**
+
+```crystal
+CML.trace "Chan.register_send", value, pick, tag: "chan"
+CML::Tracer.set_output(File.open("trace.log", "w"))
+CML::Tracer.set_filter_tags(["chan", "pick"])
+```
+
+See `src/trace_macro.cr` for implementation details and configuration API.
 
 ---
 
