@@ -207,6 +207,16 @@ module CML
   # Atomicity: Registration is non-blocking; rendezvous is atomic.
   # Fiber behavior: Fibers block only in sync, not in registration.
   class Chan(T)
+    @closed = Atomic(Bool).new(false)
+
+    # Closes the channel. Further sends or receives will fail.
+    def close
+      @closed.set(true)
+    end
+
+    def closed?
+      @closed.get
+    end
     @send_q = Deque({T, Pick(Nil)}).new
     @recv_q = Deque(Pick(T)).new
     @mtx = Mutex.new
@@ -214,12 +224,14 @@ module CML
     # Creates a send event for the given value.
     # The event completes when the value is successfully sent.
     def send_evt(value : T) : Event(Nil)
+      raise Channel::ClosedError.new("send on closed channel") if closed?
       SendEvt.new(self, value)
     end
 
     # Creates a receive event.
     # The event completes when a value is received from the channel.
     def recv_evt : Event(T)
+      raise Channel::ClosedError.new("recv on closed channel") if closed?
       RecvEvt.new(self)
     end
 
