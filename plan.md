@@ -198,7 +198,7 @@ AI agents can propose or implement these only after all prior phases are verifie
 | 0 | Stable Core              | ✅ complete |
 | 1 | Performance & Efficiency | ✅ complete |
 | 2 | Documentation            | 🟡 in progress |
-| 3 | Extended Primitives      | 🔲 not started |
+| 3 | Extended Primitives      | ✅ complete |
 | 4 | Tracing                  | 🔲 not started |
 | 5 | Usability & Examples     | 🔲 not started |
 | 6 | Validation               | 🔲 not started |
@@ -240,17 +240,18 @@ When in doubt, remember:
 
 ---
 
+
 ## 3. Phase 3 — Extended CML Primitives
 
 🎯 Goal: Reach parity with full Concurrent ML implementations.
 
 **Status:**
-- [ ] `choose_all` (not implemented)
-- [ ] `wrap_abort` (not implemented)
-- [ ] `select` macro (not implemented)
-- [ ] `with_timeout(evt, span)` (not implemented)
+- [✅] `choose_all` (implemented)
+- [✅] `wrap_abort` (implemented)
+- [✅] `select` macro (implemented)
+- [✅] `with_timeout(evt, span)` (implemented)
 
-The following primitives are still pending and have not been implemented in the codebase, tests, or documentation. This phase is not started.
+All planned primitives for this phase are implemented, tested, and documented. Phase 3 is complete.
 
 **AI guidance**
 - Maintain `try_register` contract.
