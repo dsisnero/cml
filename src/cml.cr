@@ -12,16 +12,16 @@ module CML
   end
 
   # Internal select implementation
-  def self.__select_impl(pairs)
-    idx = nil
-    result = nil
+  def self.__select_impl(pairs : Array(Tuple(Event(T), Proc(T?, R)))) : R forall T, R
+    idx : Int32? = nil
+    result : T? = nil
     events = pairs.map(&.first)
     handlers = pairs.map(&.last)
-    wrapped = events.each_with_index.map do |ev, i|
-      wrap(ev) { |v| idx = i; result = v; v }
+    wrapped = events.each_with_index.map do |event, i|
+      wrap(event) { |v| idx = i; result = v; v }
     end.to_a
     sync(choose(wrapped))
-    handlers[idx.not_nil!].call(result)
+  handlers[idx.nil? ? 0 : idx.as(Int32)].call(result)
   end
 
   # ...existing code...

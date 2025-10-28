@@ -54,14 +54,14 @@ module CML
     end
 
     # Schedules a one-time timeout.
-    def schedule(timeout : Time::Span, &callback : ->) : UInt64
+    def schedule(timeout : Time::Span, &callback : -> Nil) : UInt64
       @mutex.synchronize do
         add_timer_internal(timeout, nil, callback)
       end
     end
 
     # Schedules a recurring timer.
-    def schedule_interval(interval : Time::Span, &callback : ->) : UInt64
+    def schedule_interval(interval : Time::Span, &callback : -> Nil) : UInt64
       @mutex.synchronize do
         add_timer_internal(interval, interval, callback)
       end
@@ -126,7 +126,7 @@ module CML
       end
     end
 
-    private def add_timer_internal(timeout : Time::Span, interval : Time::Span?, callback : ->) : UInt64
+    private def add_timer_internal(timeout : Time::Span, interval : Time::Span?, callback : -> Nil) : UInt64
       timeout_ticks = (timeout / @tick_duration).to_i.to_u64
       raise ArgumentError.new("Timeout must be positive") if timeout_ticks == 0
 

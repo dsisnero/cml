@@ -66,7 +66,7 @@ module CML
     describe "Guard cancellation" do
       it "cancels side-effects when other event commits" do
         called = Atomic(Bool).new(false)
-        ch = Chan(Int32).new
+        Chan(Int32).new
 
         guarded = CML.guard do
           spawn { called.set(true) }

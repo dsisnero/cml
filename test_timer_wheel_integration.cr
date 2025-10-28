@@ -15,7 +15,7 @@ puts "Elapsed time: #{elapsed.total_milliseconds.round(2)}ms"
 # Test 2: Choose between channel and timeou
 puts "\nTest 2: Choose between channel and timeout"
 channel = CML::Chan(Int32).new
-timeout_evt = CML.timeout(50.milliseconds)
+CML.timeout(50.milliseconds)
 
 start_time = Time.monotonic
 result = CML.sync(CML.choose(
