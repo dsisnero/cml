@@ -9,3 +9,8 @@ description: A minimal, composable Concurrent ML runtime for Crystal
 crystal: ">= 1.18.1"
 
 license: MIT
+
+development_dependencies:
+  ameba:
+    github: crystal-ameba/ameba
+    version: ~> 1.5
