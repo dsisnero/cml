@@ -64,7 +64,7 @@ module CML
     # Guard cancellation and side-effects
     # ------------------------------------------------------------------
     describe "Guard cancellation" do
-      it "cancels side-effects when other event commits" do
+      it "does not evaluate guard thunk when other event is immediately ready (strict laziness)" do
         called = Atomic(Bool).new(false)
         Chan(Int32).new
 
@@ -80,9 +80,9 @@ module CML
         result = CML.sync(choice)
         result.should eq(:immediate)
 
-        # The side-effect should still have been scheduled
+        # Strict laziness: guard thunk not evaluated because choose won via poll
         sleep 0.1.seconds
-        called.get.should be_true
+        called.get.should be_false
       end
     end
 

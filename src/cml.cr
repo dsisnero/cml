@@ -217,6 +217,7 @@ module CML
     def closed?
       @closed.get
     end
+
     @send_q = Deque({T, Pick(Nil)}).new
     @recv_q = Deque(Pick(T)).new
     @mtx = Mutex.new
@@ -471,7 +472,10 @@ module CML
     # real event, and then poll that event. This ensures the guard's
     # side-effects are triggered correctly during the polling phase.
     def poll : T?
-      @block.call.poll
+      # Strict CML laziness: do not evaluate the guard thunk during poll.
+      # This prevents side effects from running in ChooseEvt's poll fast path.
+      # The thunk will be evaluated only during registration (try_register).
+      nil
     end
   end
 
@@ -704,6 +708,59 @@ module CML
     flat = evts.flat_map { |e| e.is_a?(ChooseEvt(T)) ? e.evts : [e] }
     evt = ChooseEvt(T).new(flat)
     evt
+  end
+
+  # Internal helper to bypass macro recursion when delegating from macro with array input
+  def self.__choose_from_array(evts : Array(Event(T))) : Event(T) forall T
+    choose(evts)
+  end
+
+  # Varargs choose overloads for heterogeneous event result types (2..6 args).
+  # These construct a homogeneous Array(Event(union)) via wrap-based upcasting
+  # and delegate to the array-based choose implementation.
+  def self.choose(e1 : Event(A), e2 : Event(B)) : Event(A | B) forall A, B
+    events = [] of Event(A | B)
+    events << wrap(e1) { |x| x.as(A | B) }
+    events << wrap(e2) { |x| x.as(A | B) }
+    choose(events)
+  end
+
+  def self.choose(e1 : Event(A), e2 : Event(B), e3 : Event(C)) : Event(A | B | C) forall A, B, C
+    events = [] of Event(A | B | C)
+    events << wrap(e1) { |x| x.as(A | B | C) }
+    events << wrap(e2) { |x| x.as(A | B | C) }
+    events << wrap(e3) { |x| x.as(A | B | C) }
+    choose(events)
+  end
+
+  def self.choose(e1 : Event(A), e2 : Event(B), e3 : Event(C), e4 : Event(D)) : Event(A | B | C | D) forall A, B, C, D
+    events = [] of Event(A | B | C | D)
+    events << wrap(e1) { |x| x.as(A | B | C | D) }
+    events << wrap(e2) { |x| x.as(A | B | C | D) }
+    events << wrap(e3) { |x| x.as(A | B | C | D) }
+    events << wrap(e4) { |x| x.as(A | B | C | D) }
+    choose(events)
+  end
+
+  def self.choose(e1 : Event(A), e2 : Event(B), e3 : Event(C), e4 : Event(D), e5 : Event(E)) : Event(A | B | C | D | E) forall A, B, C, D, E
+    events = [] of Event(A | B | C | D | E)
+    events << wrap(e1) { |x| x.as(A | B | C | D | E) }
+    events << wrap(e2) { |x| x.as(A | B | C | D | E) }
+    events << wrap(e3) { |x| x.as(A | B | C | D | E) }
+    events << wrap(e4) { |x| x.as(A | B | C | D | E) }
+    events << wrap(e5) { |x| x.as(A | B | C | D | E) }
+    choose(events)
+  end
+
+  def self.choose(e1 : Event(A), e2 : Event(B), e3 : Event(C), e4 : Event(D), e5 : Event(E), e6 : Event(F)) : Event(A | B | C | D | E | F) forall A, B, C, D, E, F
+    events = [] of Event(A | B | C | D | E | F)
+    events << wrap(e1) { |x| x.as(A | B | C | D | E | F) }
+    events << wrap(e2) { |x| x.as(A | B | C | D | E | F) }
+    events << wrap(e3) { |x| x.as(A | B | C | D | E | F) }
+    events << wrap(e4) { |x| x.as(A | B | C | D | E | F) }
+    events << wrap(e5) { |x| x.as(A | B | C | D | E | F) }
+    events << wrap(e6) { |x| x.as(A | B | C | D | E | F) }
+    choose(events)
   end
 
   # Alias used by some specs; same semantics as choose.
