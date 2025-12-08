@@ -12,20 +12,20 @@ elapsed = Time.monotonic - start_time
 puts "Timeout result: #{result}"
 puts "Elapsed time: #{elapsed.total_milliseconds.round(2)}ms"
 
-# Test 2: Choose between channel and timeou
+# Test 2: Choose between channel and timeout
 puts "\nTest 2: Choose between channel and timeout"
 channel = CML::Chan(Int32).new
-CML.timeout(50.milliseconds)
+timeout_evt = CML.timeout(50.milliseconds)
 
 start_time = Time.monotonic
 result = CML.sync(CML.choose(
   channel.recv_evt,
-  timeout_ev
+  timeout_evt
 ))
 elapsed = Time.monotonic - start_time
 
-case resul
-when :timeou
+case result
+when :timeout
   puts "Operation timed out after #{elapsed.total_milliseconds.round(2)}ms (expected)"
 else
   puts "Received: #{result} (unexpected)"

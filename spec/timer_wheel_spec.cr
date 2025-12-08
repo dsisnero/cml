@@ -3,7 +3,7 @@ require "./spec_helper"
 module CML
   describe TimerWheel do
     it "schedules and fires a one-time timer" do
-      wheel = TimerWheel.new(tick_duration: 10.milliseconds)
+      wheel = TimerWheel.new(tick_duration: 10.milliseconds, auto_advance: false, sync_callbacks: true)
       fired = false
 
       wheel.schedule(50.milliseconds) { fired = true }
@@ -16,7 +16,7 @@ module CML
     end
 
     it "cancels a timer before it fires" do
-      wheel = TimerWheel.new(tick_duration: 10.milliseconds)
+      wheel = TimerWheel.new(tick_duration: 10.milliseconds, auto_advance: false, sync_callbacks: true)
       fired = false
 
       timer_id = wheel.schedule(50.milliseconds) { fired = true }
@@ -29,7 +29,7 @@ module CML
     end
 
     it "schedules and fires a recurring interval timer" do
-      wheel = TimerWheel.new(tick_duration: 10.milliseconds)
+      wheel = TimerWheel.new(tick_duration: 10.milliseconds, auto_advance: false, sync_callbacks: true)
       fire_count = 0
 
       wheel.schedule_interval(50.milliseconds) { fire_count += 1 }
@@ -45,7 +45,7 @@ module CML
     end
 
     it "cancels an interval timer" do
-      wheel = TimerWheel.new(tick_duration: 10.milliseconds)
+      wheel = TimerWheel.new(tick_duration: 10.milliseconds, auto_advance: false, sync_callbacks: true)
       fire_count = 0
 
       timer_id = wheel.schedule_interval(50.milliseconds) { fire_count += 1 }
@@ -63,7 +63,7 @@ module CML
       # This test relies on the default wheel configuration
       # Level 0: 256 slots, 1ms ticks -> ~256ms
       # Level 1: 64 slots -> up to ~16s
-      wheel = TimerWheel.new(tick_duration: 1.millisecond)
+      wheel = TimerWheel.new(tick_duration: 1.millisecond, auto_advance: false, sync_callbacks: true)
       fired = false
 
       # Schedule a timer that will land on a higher-level wheel
@@ -78,7 +78,7 @@ module CML
     end
 
     it "handles a large number of timers" do
-      wheel = TimerWheel.new(tick_duration: 1.millisecond)
+      wheel = TimerWheel.new(tick_duration: 1.millisecond, auto_advance: false, sync_callbacks: true)
       fire_count = 0
 
       100.times do
@@ -90,7 +90,7 @@ module CML
     end
 
     it "advances time correctly in large jumps" do
-      wheel = TimerWheel.new(tick_duration: 1.millisecond)
+      wheel = TimerWheel.new(tick_duration: 1.millisecond, auto_advance: false, sync_callbacks: true)
       fired = false
 
       wheel.schedule(1.second) { fired = true }
