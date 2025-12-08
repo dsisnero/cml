@@ -1,0 +1,68 @@
+# Workstream Definition Template
+# This template defines the structure for machine-readable workstream plans
+
+# Basic workstream metadata
+workstream:
+  id: "workstream-id"                    # Unique identifier (e.g., "interactive-config")
+  title: "Workstream Title"              # Human-readable title
+  letter: "A"                            # Workstream letter for reference
+  status: "active"                       # active, completed, queued, blocked
+  priority: 1                            # Priority level (1=highest)
+  created_at: "2024-01-01T00:00:00Z"     # Creation timestamp
+  updated_at: "2024-01-01T00:00:00Z"     # Last update timestamp
+
+# Agent assignment and coordination
+assignment:
+  assigned_agent: "agent-id"             # Agent responsible for this workstream
+  agent_type: "specialist"               # specialist, generalist, orchestrator
+  required_skills: []                    # Required skills for this workstream
+  estimated_completion: "2024-01-15"     # Estimated completion date
+
+# Dependencies and relationships
+dependencies:
+  blocks: []                             # Workstreams this workstream blocks
+  blocked_by: []                         # Workstreams blocking this one
+  depends_on: []                         # Workstreams this depends on
+  related_to: []                         # Related workstreams
+
+# Requirements and constraints
+requirements:
+  - "crystal_spec_passing"               # System requirements
+  - "stdin_handling_fixed"
+  acceptance_criteria:                    # Acceptance criteria
+    - "All existing tools work with auto-generated schemas"
+    - "Schema validation catches malformed inputs"
+
+# Task breakdown with progress tracking
+tasks:
+  - id: "task-1"
+    description: "Task description"
+    status: "pending"                    # pending, in_progress, completed, blocked
+    priority: 1
+    estimated_hours: 4
+    actual_hours: 0
+    dependencies: []
+    acceptance_criteria:
+      - "Specific acceptance criteria for this task"
+    notes: "Additional notes or context"
+
+# Progress tracking
+progress:
+  total_tasks: 0
+  completed_tasks: 0
+  blocked_tasks: 0
+  completion_percentage: 0
+  last_progress_update: "2024-01-01T00:00:00Z"
+
+# Oracle insights and optimization
+oracle_insights:
+  strategic_importance: "high"           # high, medium, low
+  complexity: "medium"                   # high, medium, low
+  risk_level: "low"                      # high, medium, low
+  optimization_suggestions: []           # Oracle-generated optimization suggestions
+
+# Links and references
+links:
+  plan_reference: "plan.md#workstream-a" # Reference to main plan.md
+  related_files: []                      # Related implementation files
+  documentation: []                      # Documentation links
