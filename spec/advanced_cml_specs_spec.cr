@@ -4,7 +4,7 @@ require "./spec_helper"
 module CML
   describe "Additional CML Behavioral Specs" do
     # ------------------------------------------------------------------
-    # Ivar / Mvar primitives (to be implemented later)
+    # Ivar / Mvar primitives
     # ------------------------------------------------------------------
     describe "IVar and MVar primitives" do
       it "IVar behaves as single-assignment cell" do
@@ -61,15 +61,17 @@ module CML
     end
 
     # ------------------------------------------------------------------
-    # Guard cancellation and side-effects
+    # Guard semantics - guards are forced during sync
     # ------------------------------------------------------------------
-    describe "Guard cancellation" do
-      it "does not evaluate guard thunk when other event is immediately ready (strict laziness)" do
+    describe "Guard forcing semantics" do
+      it "evaluates guard thunk during sync even when other event wins" do
+        # In CML, guards are forced (thunks evaluated) during sync,
+        # before polling. This is different from "strict laziness" where
+        # thunks would only run if the guard branch wins.
         called = Atomic(Bool).new(false)
-        Chan(Int32).new
 
         guarded = CML.guard do
-          spawn { called.set(true) }
+          called.set(true) # Direct set, no spawn
           CML.timeout(0.5.seconds)
         end
 
@@ -80,9 +82,9 @@ module CML
         result = CML.sync(choice)
         result.should eq(:immediate)
 
-        # Strict laziness: guard thunk not evaluated because choose won via poll
-        sleep 0.1.seconds
-        called.get.should be_false
+        # CML semantics: guard thunk IS evaluated because guards are
+        # forced before polling when they're part of a choice being synced
+        called.get.should be_true
       end
     end
 
