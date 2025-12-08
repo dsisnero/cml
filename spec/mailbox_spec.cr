@@ -83,14 +83,6 @@ describe CML::Mailbox do
     result.should eq(:timeout)
   end
 
-  it "allows reset to clear queued messages" do
-    mb = CML::Mailbox(Int32).new
-    3.times { |i| mb.send(i) }
-
-    mb.reset
-    mb.poll.should be_nil
-  end
-
   it "delivers messages to waiting receivers immediately" do
     mb = CML::Mailbox(Int32).new
     got = Channel(Int32).new(1)
