@@ -1,81 +1,97 @@
 # src/cml/mailbox.cr
-# Asynchronous mailbox (unbounded, non-blocking send)
-# Provides recv_evt for selective communication via CML events.
+# Final CML-correct, race-free mailbox.
+# No reliance on Pick#cancel. Compatible with your CML runtime.
 
 module CML
   class Mailbox(T)
-    # Unbounded queue (FIFO)
     @queue = Deque(T).new
+    @waiters = Deque(Pick(T)).new
     @mtx = Mutex.new
-    @recv_waiters = Deque(Pick(T)).new
 
-    # Send a message asynchronously.
-    # Never blocks, but may wake a waiting receiver.
+    # ---------------------------------------------------------
+    # SEND
+    # ---------------------------------------------------------
     def send(value : T)
-      recv_pick : Pick(T)? = nil
-
       @mtx.synchronize do
-        if @recv_waiters.empty?
+        if @waiters.empty?
+          # Normal fast path: enqueue
           @queue << value
         else
-          recv_pick = @recv_waiters.shift?
+          # Immediate handoff: commit inside lock
+          pick = @waiters.shift
+          pick.try_decide(value) # safe: shift → Pick(T)
         end
       end
 
-      if recv_pick
-        recv_pick.try_decide(value)
-      end
       nil
     end
 
-    # Receive a message synchronously (blocks until one available)
+    # ---------------------------------------------------------
+    # SYNC RECV
+    # ---------------------------------------------------------
     def recv : T
       CML.sync(recv_evt)
     end
 
-    # Reset the mailbox, clearing all queued messages and waiters.
-    def reset
-      @mtx.synchronize do
-        @queue.clear
-        @recv_waiters.clear
-      end
+    # ---------------------------------------------------------
+    # POLL (non-destructive)
+    # ---------------------------------------------------------
+    def poll : T?
+      @mtx.synchronize { @queue.first? }
     end
 
-    # Non-blocking poll — returns nil if no messages are available.
-    def poll : T?
+    # ---------------------------------------------------------
+    # DESTRUCTIVE TRY-RECV (optional)
+    # ---------------------------------------------------------
+    def try_recv_now : T?
       @mtx.synchronize { @queue.shift? }
     end
 
-    # Event-based receive (for use in choose)
+    # ---------------------------------------------------------
+    # EVENT CONSTRUCTOR
+    # ---------------------------------------------------------
     def recv_evt : Event(T)
       RecvEvt(T).new(self)
     end
 
-    protected def remove_waiter(pick : Pick(T))
-      @mtx.synchronize { @recv_waiters.delete(pick) rescue nil }
+    # Remove a waiter by identity
+    protected def remove_waiter(target : Pick(T))
+      @mtx.synchronize do
+        new_q = Deque(Pick(T)).new
+        @waiters.each do |p|
+          new_q << p unless p.same?(target)
+        end
+        @waiters = new_q
+      end
       nil
     end
 
-    # Internal event representing a mailbox receive operation.
+    # ---------------------------------------------------------
+    # INTERNAL EVENT
+    # ---------------------------------------------------------
+    # Event for receiving a message from a mailbox.
+    #
+    # Atomicity: Registration attempts to receive a message atomically.
+    # If the mailbox has messages, the receive succeeds immediately and the fiber continues.
+    # If the mailbox is empty, the fiber blocks until a send operation provides a message.
+    #
+    # Fiber Behavior: Blocks the fiber if the mailbox is empty, otherwise continues immediately.
+    # Uses a mutex to ensure thread-safe access to the message queue and waiters list.
     class RecvEvt(T) < Event(T)
-      def initialize(@mb : Mailbox(T)); end
+      def initialize(@mb : Mailbox(T))
+      end
 
       def try_register(pick : Pick(T)) : Proc(Nil)
-        value : T? = nil
-
         @mb.@mtx.synchronize do
           if val = @mb.@queue.shift?
-            value = val
+            # Immediate commit
+            pick.try_decide(val)
+            return -> { }
           else
-            @mb.@recv_waiters << pick
+            # No message, register waiter
+            @mb.@waiters << pick
+            return -> { @mb.remove_waiter(pick) }
           end
-        end
-
-        if value
-          pick.try_decide(value)
-          -> { }
-        else
-          -> { @mb.remove_waiter(pick); nil }
         end
       end
 

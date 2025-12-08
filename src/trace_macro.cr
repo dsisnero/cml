@@ -9,7 +9,7 @@
 module CML
   macro trace(msg, *args, tag = nil)
     {% if flag?(:trace) %}
-      CML::Tracer.log({{msg}}, {{args.splat}}, tag: {{tag}})
+      CML::Tracer.log({{ msg }}, {{ args.splat }}, tag: {{ tag }})
     {% end %}
   end
 end

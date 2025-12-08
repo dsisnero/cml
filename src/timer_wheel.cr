@@ -23,12 +23,17 @@ module CML
     end
 
     getter wheel_config : Array(Tuple(Int32, Int32))
+    @sync_callbacks : Bool = false
 
     # Initializes the timer wheel.
     #
     # - tick_duration: The resolution of the timer wheel.
     # - wheel_config: Configuration for each level of the wheel, defining
     #   the number of slots and the bit-width for that level.
+    # - auto_advance: If true (default), spawns a background fiber to advance
+    #   time automatically. Set to false for manual time control (testing).
+    # - sync_callbacks: If true, execute callbacks synchronously instead of
+    #   spawning fibers. Useful for deterministic testing.
     def initialize(
       @tick_duration : Time::Span = 1.millisecond,
       @wheel_config : Array(Tuple(Int32, Int32)) = [
@@ -37,6 +42,8 @@ module CML
         {64, 6},  # Level 2: 64 slots, 6 bits
         {64, 6},  # Level 3: 64 slots, 6 bits
       ],
+      auto_advance : Bool = true,
+      sync_callbacks : Bool = false,
     )
       @current_time = 0_u64
       @wheel_slots = Array(Array(Array(TimerEntry))).new
@@ -48,9 +55,10 @@ module CML
       @timer_locations = Hash(UInt64, TimerEntry).new
       @mutex = Mutex.new
       @running = true
+      @sync_callbacks = sync_callbacks
 
       setup_wheels
-      spawn { process_timers_loop }
+      spawn { process_timers_loop } if auto_advance
     end
 
     # Schedules a one-time timeout.
@@ -260,10 +268,21 @@ module CML
         # after being moved to the expired list.
         next if entry.cancelled?
 
-        begin
-          entry.callback.call
-        rescue ex
-          # Log or handle callback errors
+        # Execute callback - either synchronously or in a separate fiber
+        if @sync_callbacks
+          begin
+            entry.callback.call
+          rescue ex
+            # Log or handle callback errors
+          end
+        else
+          spawn do
+            begin
+              entry.callback.call
+            rescue ex
+              # Log or handle callback errors
+            end
+          end
         end
 
         # Reschedule if it's an interval timer
