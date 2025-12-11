@@ -38,9 +38,9 @@ puts "=" * 60
 puts
 
 # Test parameters
-NUM_MESSAGES = 1_000
-NUM_SUBSCRIBERS = 4
-ITERATIONS = 5
+NUM_MESSAGES    = 1_000
+NUM_SUBSCRIBERS =     4
+ITERATIONS      =     5
 
 puts "Parameters:"
 puts "  Messages: #{NUM_MESSAGES}"
@@ -84,7 +84,7 @@ simple_sub = benchmark("Simple Multicast (multicast.cr)", ITERATIONS) do
   spawn do
     NUM_MESSAGES.times do |i|
       mc.multicast(i)
-      Fiber.yield  # Let receivers process
+      Fiber.yield # Let receivers process
     end
   end
 
@@ -121,7 +121,7 @@ sml_sub = benchmark("SML Multicast (multicast_sml.cr)", ITERATIONS) do
   spawn do
     NUM_MESSAGES.times do |i|
       mc.multicast(i)
-      Fiber.yield  # Let receivers process
+      Fiber.yield # Let receivers process
     end
   end
 
@@ -158,7 +158,7 @@ mem_eff_sub = benchmark("Memory-Efficient (multicast_memory_efficient.cr)", ITER
   spawn do
     NUM_MESSAGES.times do |i|
       mc.multicast(i)
-      Fiber.yield  # Let receivers process
+      Fiber.yield # Let receivers process
     end
   end
 

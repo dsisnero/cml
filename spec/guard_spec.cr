@@ -93,7 +93,7 @@ describe CML do
       # Now test with guard winning again (second sync)
       spawn { CML.sync(ch1.send_evt(21)) }
       result2 = CML.sync(guarded)
-      result2.should eq("inner: 42") # Always wins in inner choice
+      result2.should eq("inner: 42")   # Always wins in inner choice
       execution_count.get.should eq(2) # Guard executed again
     end
 
@@ -154,7 +154,7 @@ describe CML do
       # Race against immediate timeout - both return Symbol
       result = CML.sync(CML.choose(
         guarded,
-        CML.wrap(CML.timeout(0.01.seconds)) { |t| t },
+        CML.wrap(CML.timeout(0.01.seconds)) { |tout| tout },
       ))
 
       result.should eq(:timeout)

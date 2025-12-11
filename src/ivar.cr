@@ -60,19 +60,19 @@ module CML
     # Equivalent to SML's: val iGet : 'a ivar -> 'a
     def i_get : T
       # Use event-based blocking through CML.sync
-      CML.sync(i_get_evt)
+      CML.sync(i_evt)
     end
 
     # Event for getting the value from the IVar.
     # Equivalent to SML's: val iGetEvt : 'a ivar -> 'a event
-    def i_get_evt : Event(T)
+    def i_evt : Event(T)
       ReadEvt(T).new(self)
     end
 
     # Non-blocking poll for the value.
     # Equivalent to SML's: val iGetPoll : 'a ivar -> 'a option
-    def i_get_poll : T?
-      return nil unless @filled.get
+    def i_poll : T?
+      return unless @filled.get
       @value
     end
 
@@ -93,7 +93,7 @@ module CML
 
     # Event that reads the value from the IVar (blocks until filled)
     def read_evt : Event(T)
-      i_get_evt
+      i_evt
     end
 
     # Fill the IVar. Only succeeds once. (Legacy name)
@@ -226,14 +226,14 @@ module CML
 
   # Event for getting the value from an IVar.
   # Equivalent to SML's: val iGetEvt : 'a ivar -> 'a event
-  def self.i_get_evt(ivar : IVar(T)) : Event(T) forall T
-    ivar.i_get_evt
+  def self.i_evt(ivar : IVar(T)) : Event(T) forall T
+    ivar.i_evt
   end
 
   # Non-blocking poll for the IVar value.
   # Equivalent to SML's: val iGetPoll : 'a ivar -> 'a option
   def self.i_get_poll(ivar : IVar(T)) : T? forall T
-    ivar.i_get_poll
+    ivar.i_poll
   end
 
   # Check if two IVars are the same.

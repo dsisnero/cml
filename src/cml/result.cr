@@ -49,12 +49,12 @@ module CML
     # Get the value from the Result, raising if an exception was stored
     # Equivalent to SML's: val get : 'a result -> 'a
     def get : T
-      CML.sync(get_evt)
+      CML.sync(evt)
     end
 
     # Event for getting the value from the Result
     # Equivalent to SML's: val getEvt : 'a result -> 'a event
-    def get_evt : Event(T)
+    def evt : Event(T)
       CML.wrap(@ivar.read_evt) do |result|
         case result.type
         when :value
@@ -94,6 +94,6 @@ module CML
 
   # Event for getting a value from a Result
   def self.result_get_evt(result : Result(T)) : Event(T) forall T
-    result.get_evt
+    result.evt
   end
 end

@@ -35,10 +35,10 @@ puts "=" * 60
 puts
 
 # Test parameters
-NUM_MESSAGES = 10_000
-NUM_PRODUCERS = 4
-NUM_CONSUMERS = 4
-ITERATIONS = 5
+NUM_MESSAGES  = 10_000
+NUM_PRODUCERS =      4
+NUM_CONSUMERS =      4
+ITERATIONS    =      5
 
 puts "Parameters:"
 puts "  Messages: #{NUM_MESSAGES}"
@@ -135,10 +135,10 @@ basic_mpmc = benchmark("Basic Mailbox (mailbox.cr)", ITERATIONS) do
   msgs_per_consumer = NUM_MESSAGES // NUM_CONSUMERS
 
   # Spawn producers
-  NUM_PRODUCERS.times do |p|
+  NUM_PRODUCERS.times do |producer_index|
     spawn do
       msgs_per_producer.times do |i|
-        mb.send(p * msgs_per_producer + i)
+        mb.send(producer_index * msgs_per_producer + i)
       end
       producer_done.send(nil)
     end
@@ -168,10 +168,10 @@ bounded_mpmc = benchmark("Bounded Mailbox (mailbox_bounded.cr)", ITERATIONS) do
   msgs_per_consumer = NUM_MESSAGES // NUM_CONSUMERS
 
   # Spawn producers
-  NUM_PRODUCERS.times do |p|
+  NUM_PRODUCERS.times do |producer_index|
     spawn do
       msgs_per_producer.times do |i|
-        mb.send(p * msgs_per_producer + i)
+        mb.send(producer_index * msgs_per_producer + i)
       end
       producer_done.send(nil)
     end
@@ -201,10 +201,10 @@ lockfree_mpmc = benchmark("Lock-free Mailbox (mailbox_lockfree.cr)", ITERATIONS)
   msgs_per_consumer = NUM_MESSAGES // NUM_CONSUMERS
 
   # Spawn producers
-  NUM_PRODUCERS.times do |p|
+  NUM_PRODUCERS.times do |producer_index|
     spawn do
       msgs_per_producer.times do |i|
-        mb.send(p * msgs_per_producer + i)
+        mb.send(producer_index * msgs_per_producer + i)
       end
       producer_done.send(nil)
     end
@@ -245,7 +245,7 @@ basic_poll = benchmark("Basic Mailbox try_recv_now", ITERATIONS) do
 
   # Drain with polling
   count = 0
-  while (v = mb.try_recv_now) != nil
+  while (_ = mb.try_recv_now) != nil
     count += 1
   end
 end
@@ -260,7 +260,7 @@ bounded_poll = benchmark("Bounded Mailbox try_recv_now", ITERATIONS) do
 
   # Drain with polling
   count = 0
-  while (v = mb.try_recv_now) != nil
+  while (_ = mb.try_recv_now) != nil
     count += 1
   end
 end
@@ -275,7 +275,7 @@ lockfree_poll = benchmark("Lock-free Mailbox try_recv_now", ITERATIONS) do
 
   # Drain with polling
   count = 0
-  while (v = mb.try_recv_now) != nil
+  while (_ = mb.try_recv_now) != nil
     count += 1
   end
 end

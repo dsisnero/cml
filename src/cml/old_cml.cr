@@ -165,7 +165,7 @@ module CML
 
     # Get the current thread ID
     # Equivalent to SML's: val getTid : unit -> thread_id
-    def self.get_tid : ThreadId
+    def self.tid : ThreadId
       Fiber.current
     end
 

@@ -65,7 +65,7 @@ def multi_phase_barrier_example
       puts "Worker #{i}: Phase 3 - Starting after second barrier (round #{round})..."
       sleep(0.1)
       puts "Worker #{i}: Phase 3 - Finished, waiting at barrier..."
-      round = enrollments[i].wait
+      enrollments[i].wait
 
       puts "Worker #{i}: All phases complete!"
     end
@@ -127,7 +127,7 @@ def barrier_with_timeout_example
     # For this example, we'll just use a simple timeout check
     begin
       # Try to wait with a timeout
-      result = CML.sync(CML.timeout(0.5.seconds))
+      CML.sync(CML.timeout(0.5.seconds))
       puts "Main: Timeout! Not all workers reached the barrier in time."
     rescue ex
       puts "Main: Exception: #{ex.message}"

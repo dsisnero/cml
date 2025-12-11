@@ -64,7 +64,7 @@ module CML
     class TraceModule
       getter full_name : String
       getter label : String
-      property tracing : Bool
+      property? tracing : Bool = false
       getter children : Array(TraceModule)
       getter parent : TraceModule?
 
@@ -75,7 +75,7 @@ module CML
       # Find or create a child module
       def child(name : String) : TraceModule
         # Check if child already exists
-        existing = @children.find { |c| c.label == name }
+        existing = @children.find { |child| child.label == name }
         return existing if existing
 
         # Create new child
@@ -150,7 +150,7 @@ module CML
       current = @@trace_root
 
       parts.each do |part|
-        found = current.children.find { |c| c.label == part }
+        found = current.children.find { |child| child.label == part }
         raise NoSuchModule.new(name) unless found
         current = found
       end
@@ -164,7 +164,7 @@ module CML
       current = @@trace_root
 
       parts.each do |part|
-        found = current.children.find { |c| c.label == part }
+        found = current.children.find { |child| child.label == part }
         return unless found
         current = found
       end
@@ -198,7 +198,7 @@ module CML
     end
 
     # Set where trace output goes
-    def self.set_trace_file(to : TraceTo)
+    def self.trace_file=(to : TraceTo)
       @@trace_mutex.synchronize do
         @@trace_cleanup.call
         @@trace_dst = to
@@ -208,7 +208,7 @@ module CML
     end
 
     # Set trace output to a file
-    def self.set_trace_file(filename : String)
+    def self.trace_file=(filename : String)
       @@trace_mutex.synchronize do
         @@trace_cleanup.call
         begin
@@ -225,7 +225,7 @@ module CML
     end
 
     # Set trace output to an IO stream
-    def self.set_trace_stream(stream : IO)
+    def self.trace_stream=(stream : IO)
       @@trace_mutex.synchronize do
         @@trace_cleanup.call
         @@trace_stream = stream
@@ -370,7 +370,7 @@ module CML
       raised_at = ex.backtrace?.try(&.last?) || ""
       msg = String.build do |io|
         io << "Fiber "
-        io << fiber.name || "unnamed"
+        io << fiber.name
         io << " uncaught exception "
         io << ex.class.name
         io << " ["
@@ -387,7 +387,7 @@ module CML
     @@exception_mutex = Mutex.new
 
     # Set the default uncaught exception action
-    def self.set_uncaught_fn(handler : ExceptionHandler)
+    def self.uncaught_fn=(handler : ExceptionHandler)
       @@exception_mutex.synchronize do
         @@default_handler = handler
       end
@@ -395,7 +395,7 @@ module CML
 
     # Add an additional uncaught exception handler
     # If the handler returns true, no further action is taken
-    def self.set_handle_fn(filter : ExceptionFilter)
+    def self.handle_fn=(filter : ExceptionFilter)
       @@exception_mutex.synchronize do
         @@exception_handlers.unshift(filter)
       end
@@ -408,7 +408,7 @@ module CML
           raised_at = ex.backtrace?.try(&.last?) || ""
           msg = String.build do |io|
             io << "Fiber "
-            io << fiber.name || "unnamed"
+            io << fiber.name
             io << " uncaught exception "
             io << ex.class.name
             io << " ["

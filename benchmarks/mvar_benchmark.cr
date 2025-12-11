@@ -35,7 +35,7 @@ puts
 
 # Test parameters
 NUM_OPERATIONS = 10_000
-ITERATIONS = 5
+ITERATIONS     =      5
 
 puts "Parameters:"
 puts "  Operations: #{NUM_OPERATIONS}"
@@ -111,10 +111,10 @@ standard_mpmc = benchmark("Standard MVar (mvar.cr)", ITERATIONS) do
   ops_per_producer = NUM_OPERATIONS // NUM_PRODUCERS
   ops_per_consumer = NUM_OPERATIONS // NUM_CONSUMERS
 
-  NUM_PRODUCERS.times do |p|
+  NUM_PRODUCERS.times do |producer_index|
     spawn do
       ops_per_producer.times do |i|
-        mv.put(p * ops_per_producer + i)
+        mv.put(producer_index * ops_per_producer + i)
       end
       producer_done.send(nil)
     end
@@ -141,10 +141,10 @@ optimized_mpmc = benchmark("Optimized MVar (mvar_optimized.cr)", ITERATIONS) do
   ops_per_producer = NUM_OPERATIONS // NUM_PRODUCERS
   ops_per_consumer = NUM_OPERATIONS // NUM_CONSUMERS
 
-  NUM_PRODUCERS.times do |p|
+  NUM_PRODUCERS.times do |producer_index|
     spawn do
       ops_per_producer.times do |i|
-        mv.put(p * ops_per_producer + i)
+        mv.put(producer_index * ops_per_producer + i)
       end
       producer_done.send(nil)
     end
@@ -210,7 +210,7 @@ end
 
 # Note: MVarOptimized doesn't have a swap method
 puts "Optimized MVar: N/A (no swap method)"
-optimized_swap = Float64::MAX
+_ = Float64::MAX
 
 puts
 
@@ -244,7 +244,7 @@ end
 
 # MVarOptimized doesn't support CML events
 puts "Optimized MVar: N/A (no CML event support)"
-optimized_evt = Float64::MAX
+_ = Float64::MAX
 
 puts
 

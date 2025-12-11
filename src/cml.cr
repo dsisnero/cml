@@ -1285,7 +1285,7 @@ module CML
   # Gets the current thread/fiber ID.
   # Equivalent to SML's: val getTid : unit -> thread_id
   # Note: This returns a lightweight wrapper, not a full CmlThreadId with completion tracking
-  def self.get_tid : Fiber
+  def self.tid : Fiber
     Fiber.current
   end
 
@@ -1322,7 +1322,7 @@ module CML
         begin
           f.call(arg)
         ensure
-          dead.i_put(nil)  # Signal completion (like SML's notifyAndDispatch)
+          dead.i_put(nil) # Signal completion (like SML's notifyAndDispatch)
         end
       end
       CmlThreadId.new(fiber, dead)
@@ -1337,7 +1337,7 @@ module CML
       begin
         block.call
       ensure
-        dead.i_put(nil)  # Signal completion (like SML's notifyAndDispatch)
+        dead.i_put(nil) # Signal completion (like SML's notifyAndDispatch)
       end
     end
     CmlThreadId.new(fiber, dead)
@@ -1354,7 +1354,7 @@ module CML
   # Uses the IVar in ThreadId (like SML's cvarGetEvt on dead cvar)
   def self.join_evt(tid : ThreadId) : Event(Nil)
     # Simply return the get event for the dead IVar - this is exactly how SML/NJ does it
-    tid.dead.i_get_evt
+    tid.dead.i_evt
   end
 
   # Yields the current fiber.

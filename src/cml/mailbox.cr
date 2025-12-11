@@ -58,8 +58,8 @@ module CML
     protected def remove_waiter(target : Pick(T))
       @mtx.synchronize do
         new_q = Deque(Pick(T)).new
-        @waiters.each do |p|
-          new_q << p unless p.same?(target)
+        @waiters.each do |waiter|
+          new_q << waiter unless waiter.same?(target)
         end
         @waiters = new_q
       end

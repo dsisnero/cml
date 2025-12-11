@@ -82,10 +82,10 @@ standard_mixed = benchmark("Standard TimerWheel", ITERATIONS) do
 
   NUM_TIMERS.times do |i|
     duration = case i % 4
-               when 0 then (1 + i % 10).milliseconds        # 1-10ms
-               when 1 then (100 + i % 900).milliseconds     # 100-999ms
-               when 2 then (1 + i % 5).seconds              # 1-5s
-               else        (5 + i % 5).seconds              # 5-10s
+               when 0 then (1 + i % 10).milliseconds    # 1-10ms
+               when 1 then (100 + i % 900).milliseconds # 100-999ms
+               when 2 then (1 + i % 5).seconds          # 1-5s
+               else        (5 + i % 5).seconds          # 5-10s
                end
     tw.schedule(duration) { }
   end
@@ -99,10 +99,10 @@ optimized_mixed = benchmark("Optimized TimerWheel", ITERATIONS) do
 
   NUM_TIMERS.times do |i|
     duration = case i % 4
-               when 0 then (1 + i % 10).milliseconds        # 1-10ms
-               when 1 then (100 + i % 900).milliseconds     # 100-999ms
-               when 2 then (1 + i % 5).seconds              # 1-5s
-               else        (5 + i % 5).seconds              # 5-10s
+               when 0 then (1 + i % 10).milliseconds    # 1-10ms
+               when 1 then (100 + i % 900).milliseconds # 100-999ms
+               when 2 then (1 + i % 5).seconds          # 1-5s
+               else        (5 + i % 5).seconds          # 5-10s
                end
     tw.schedule(duration) { }
   end
@@ -179,7 +179,6 @@ end
 
 # Optimized doesn't have advance method
 puts "Optimized TimerWheel: N/A (no advance method for testing)"
-optimized_exec = Float64::MAX
 
 puts
 

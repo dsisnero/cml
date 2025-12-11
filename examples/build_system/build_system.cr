@@ -102,25 +102,25 @@ module BuildSystem
           status.multicast(ERROR)
         when Time
           # Check if we need to rebuild
-          obj_time = file_status(target)
+          if obj_time = file_status(target)
+            needs_rebuild = if obj_time
+                              obj_time < max_stamp
+                            else
+                              true
+                            end
 
-          needs_rebuild = if obj_time
-                            obj_time < max_stamp
-                          else
-                            true
-                          end
-
-          if needs_rebuild
-            # Run the action
-            if run_process(action)
-              status.multicast(get_mtime(target))
+            if needs_rebuild
+              # Run the action
+              if run_process(action)
+                status.multicast(get_mtime(target))
+              else
+                STDERR.puts "Error making \"#{target}\""
+                status.multicast(ERROR)
+              end
             else
-              STDERR.puts "Error making \"#{target}\""
-              status.multicast(ERROR)
+              # Object is up to date - obj_time is guaranteed non-nil here
+              status.multicast(obj_time)
             end
-          else
-            # Object is up to date - obj_time is guaranteed non-nil here
-            status.multicast(obj_time.not_nil!)
           end
         end
       end
@@ -245,7 +245,7 @@ module BuildSystem
             add_leaf(target)
           end
         else
-          nil
+          nil # ameba:disable Lint/ElseNil
         end
       end
     end

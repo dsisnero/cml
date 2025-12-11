@@ -109,7 +109,7 @@ describe CML::TraceCML do
     it "returns status of module tree" do
       root = CML::TraceCML.trace_root
       parent = CML::TraceCML.trace_module(root, "status_parent")
-      child = CML::TraceCML.trace_module(parent, "status_child")
+      CML::TraceCML.trace_module(parent, "status_child")
 
       CML::TraceCML.trace_on(parent)
 
@@ -122,29 +122,29 @@ describe CML::TraceCML do
 
   describe "trace output" do
     it "can set trace destination to null" do
-      CML::TraceCML.set_trace_file(CML::TraceCML::TraceTo::Null)
+      CML::TraceCML.trace_file = CML::TraceCML::TraceTo::Null
       # Should not raise
     end
 
     it "can set trace destination to stdout" do
-      CML::TraceCML.set_trace_file(CML::TraceCML::TraceTo::Out)
+      CML::TraceCML.trace_file = CML::TraceCML::TraceTo::Out
       # Should not raise
     end
 
     it "can set trace destination to stderr" do
-      CML::TraceCML.set_trace_file(CML::TraceCML::TraceTo::Err)
+      CML::TraceCML.trace_file = CML::TraceCML::TraceTo::Err
       # Should not raise
     end
 
     it "can set trace to a stream" do
       io = IO::Memory.new
-      CML::TraceCML.set_trace_stream(io)
+      CML::TraceCML.trace_stream = io
       # Should not raise
     end
 
     it "writes trace output when enabled" do
       io = IO::Memory.new
-      CML::TraceCML.set_trace_stream(io)
+      CML::TraceCML.trace_stream = io
 
       root = CML::TraceCML.trace_root
       tm = CML::TraceCML.trace_module(root, "output_test")
@@ -157,7 +157,7 @@ describe CML::TraceCML do
 
     it "does not write trace output when disabled" do
       io = IO::Memory.new
-      CML::TraceCML.set_trace_stream(io)
+      CML::TraceCML.trace_stream = io
 
       root = CML::TraceCML.trace_root
       tm = CML::TraceCML.trace_module(root, "silent_test")
@@ -170,7 +170,7 @@ describe CML::TraceCML do
 
     it "writes trace output with block" do
       io = IO::Memory.new
-      CML::TraceCML.set_trace_stream(io)
+      CML::TraceCML.trace_stream = io
 
       root = CML::TraceCML.trace_root
       tm = CML::TraceCML.trace_module(root, "block_test")
@@ -187,14 +187,14 @@ describe CML::TraceCML do
       called = false
       handler = ->(_fiber : Fiber, _ex : Exception) { called = true; nil }
 
-      CML::TraceCML.set_uncaught_fn(handler)
+      CML::TraceCML.uncaught_fn = handler
       CML::TraceCML.reset_uncaught_fn
       # Should not raise
     end
 
     it "can add exception filters" do
       filter = ->(_fiber : Fiber, _ex : Exception) { false }
-      CML::TraceCML.set_handle_fn(filter)
+      CML::TraceCML.handle_fn = filter
       # Should not raise
     end
   end

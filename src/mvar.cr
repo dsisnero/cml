@@ -79,19 +79,19 @@ module CML
     # Read the value without removing it (blocks if empty)
     # Equivalent to SML's: val mGet : 'a mvar -> 'a
     def m_get : T
-      CML.sync(m_get_evt)
+      CML.sync(m_evt)
     end
 
     # Event for reading a value from the MVar
     # Equivalent to SML's: val mGetEvt : 'a mvar -> 'a event
-    def m_get_evt : Event(T)
+    def m_evt : Event(T)
       ReadEvt(T).new(self)
     end
 
     # Non-blocking get poll
     # Equivalent to SML's: val mGetPoll : 'a mvar -> 'a option
     def m_get_poll : T?
-      get_poll
+      poll
     end
 
     # Swap the value atomically (blocks if empty)
@@ -161,7 +161,7 @@ module CML
     end
 
     # Try to get without blocking
-    def get_poll : T?
+    def poll : T?
       @value
     end
 
@@ -370,7 +370,7 @@ module CML
   # Event for getting a value from an MVar.
   # Equivalent to SML's: val mGetEvt : 'a mvar -> 'a event
   def self.m_get_evt(mvar : MVar(T)) : Event(T) forall T
-    mvar.m_get_evt
+    mvar.m_evt
   end
 
   # Non-blocking get poll for an MVar.

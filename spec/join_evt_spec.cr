@@ -3,8 +3,6 @@ require "./spec_helper"
 describe "CML.join_evt" do
   describe "basic functionality" do
     it "fires when a spawned fiber terminates normally" do
-      completed = false
-
       # Spawn a fiber that finishes immediately
       tid = CML.spawn do
         # Do nothing, just exit
@@ -116,10 +114,10 @@ describe "CML.join_evt" do
       sleep 20.milliseconds
 
       guarded = false
-      result = CML.sync(CML.guard {
+      CML.sync(CML.guard do
         guarded = true
         CML.join_evt(tid)
-      })
+      end)
 
       guarded.should be_true
     end

@@ -6,12 +6,12 @@ describe CML::MVar do
   describe "initialization" do
     it "creates an empty MVar" do
       mvar = CML::MVar(Int32).new
-      mvar.get_poll.should be_nil
+      mvar.poll.should be_nil
     end
 
     it "creates an MVar with initial value" do
       mvar = CML::MVar(Int32).new(42)
-      mvar.get_poll.should eq(42)
+      mvar.poll.should eq(42)
     end
   end
 
@@ -58,7 +58,7 @@ describe CML::MVar do
       mvar = CML::MVar(Int32).new(42)
       mvar.get.should eq(42)
       mvar.get.should eq(42) # Still there
-      mvar.get_poll.should eq(42)
+      mvar.poll.should eq(42)
     end
 
     it "blocks when empty" do
@@ -73,7 +73,7 @@ describe CML::MVar do
       sleep 10.milliseconds
       mvar.put(99)
       done.receive.should eq(99)
-      mvar.get_poll.should eq(99) # Still there after get
+      mvar.poll.should eq(99) # Still there after get
     end
   end
 
@@ -82,7 +82,7 @@ describe CML::MVar do
       mvar = CML::MVar(Int32).new(10)
       old_value = mvar.swap(20)
       old_value.should eq(10)
-      mvar.get_poll.should eq(20)
+      mvar.poll.should eq(20)
     end
 
     it "blocks when empty" do
@@ -97,7 +97,7 @@ describe CML::MVar do
       sleep 10.milliseconds
       mvar.put("old")
       done.receive.should eq("old")
-      mvar.get_poll.should eq("new")
+      mvar.poll.should eq("new")
     end
 
     it "handles multiple swaps" do
@@ -109,7 +109,7 @@ describe CML::MVar do
       end
 
       results.should eq([0, 1, 2, 3, 4])
-      mvar.get_poll.should eq(5)
+      mvar.poll.should eq(5)
     end
   end
 
@@ -119,7 +119,7 @@ describe CML::MVar do
       evt = mvar.swap_evt(200)
       old_value = CML.sync(evt)
       old_value.should eq(100)
-      mvar.get_poll.should eq(200)
+      mvar.poll.should eq(200)
     end
   end
 
@@ -136,16 +136,16 @@ describe CML::MVar do
     end
   end
 
-  describe "get_poll (non-blocking)" do
+  describe "poll (non-blocking)" do
     it "returns value when full" do
       mvar = CML::MVar(Int32).new(42)
-      mvar.get_poll.should eq(42)
-      mvar.get_poll.should eq(42) # Still there
+      mvar.poll.should eq(42)
+      mvar.poll.should eq(42) # Still there
     end
 
     it "returns nil when empty" do
       mvar = CML::MVar(Int32).new
-      mvar.get_poll.should be_nil
+      mvar.poll.should be_nil
     end
   end
 
@@ -175,7 +175,7 @@ describe CML::MVar do
       evt = mvar.read_evt
       result = CML.sync(evt)
       result.should eq(42)
-      mvar.get_poll.should eq(42) # Still there
+      mvar.poll.should eq(42) # Still there
     end
   end
 
@@ -208,7 +208,7 @@ describe CML::MVar do
       end
 
       3.times { results.receive.should eq(42) }
-      mvar.get_poll.should eq(42) # Still there
+      mvar.poll.should eq(42) # Still there
     end
   end
 end

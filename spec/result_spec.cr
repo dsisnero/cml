@@ -25,7 +25,7 @@ module CML
         result.put(100)
       end
 
-      CML.sync(result.get_evt).should eq(100)
+      CML.sync(result.evt).should eq(100)
     end
 
     # Note: Exception propagation through wrap events requires
@@ -78,7 +78,7 @@ module CML
       end
 
       # Should get result1 first since it completes sooner
-      value = CML.sync(CML.choose(result1.get_evt, result2.get_evt))
+      value = CML.sync(CML.choose(result1.evt, result2.evt))
       value.should eq(100)
     end
   end

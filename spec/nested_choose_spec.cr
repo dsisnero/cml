@@ -111,7 +111,7 @@ module CML
 
         # Inner choice with timeout - both return String
         inner = CML.choose(
-          CML.wrap(ch.recv_evt) { |x| x.to_s },
+          CML.wrap(ch.recv_evt, &.to_s),
           CML.wrap(CML.timeout(0.1.seconds)) { |_t| "-1" },
         )
 
@@ -130,7 +130,7 @@ module CML
 
         # Inner choice with very short timeout - both String
         inner = CML.choose(
-          CML.wrap(ch.recv_evt) { |x| x.to_s },
+          CML.wrap(ch.recv_evt, &.to_s),
           CML.wrap(CML.timeout(0.01.seconds)) { |_t| "timeout" },
         )
 
@@ -154,7 +154,7 @@ module CML
           execution_count.add(1)
           CML.choose(
             CML.always(:from_guard),
-            CML.wrap(CML.timeout(0.1.seconds)) { |t| t },
+            CML.wrap(CML.timeout(0.1.seconds)) { |tout| tout }, #
           )
         end
 
@@ -252,7 +252,7 @@ module CML
 
       it "handles deeply nested timeout stress" do
         # Create a deeply nested timeout structure - all Symbol
-        current = CML.wrap(CML.timeout(1.second)) { |t| t }
+        current = CML.wrap(CML.timeout(1.second)) { |tout| tout }
         10.times do |_|
           current = CML.choose(
             CML.wrap(current) { |_t| :timeout },
@@ -277,7 +277,7 @@ module CML
           spawn do
             # Create nested choice for each fiber - inner: Int32 | Symbol -> String
             inner = CML.choose(
-              CML.wrap(CML.always(i)) { |x| x.to_s },
+              CML.wrap(CML.always(i), &.to_s),
               CML.wrap(CML.timeout(0.5.seconds)) { |_t| "timeout" },
             )
 
