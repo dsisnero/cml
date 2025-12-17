@@ -10,6 +10,6 @@
 .clarity2/sessions
 
 # Compiled executables
-cml
-smlnj
-hopac
+/smlnj/
+/crystal/
+/hopac/

@@ -1,0 +1,2280 @@
+
+9.1 CMIL-Linda
+                                   185
+
+-------------------------------------------------------------------------------
+        signature LINDA =
+          sig
+
+            datatype val_atom
+              = IVval of int
+              | SVval of string
+              | BVval of bool
+
+            datatype pat_atom
+              = IPTat of int
+              | SPat of string
+              | BPat of bool
+              | IFormal
+              | SFormal
+              | BBormal
+              | Wid
+
+            datatype 'a tuple_rep = T of (:val_atom * 'a list)
+
+            type tuple = val_atom tuple_rep
+            type template = pat_atom tuple_rep
+
+            type tuple_space
+
+            val joinTupleSpace : {
+                      localPort   : int option,
+                      remoteHosts : string list
+                    } -> tuple_space
+
+            val out    : (tuple_space * tuple) -> unit
+            val inEvt : (tuple_space * template) -> val_atom list event
+            val rddEvt : (tuple_space * template) -> val_atom list event
+
+          end;
+
+
+                              Listing 9.1: The CMIL-Linda interface
+
+-------------------------------------------------------------------------------
+
+
+
+
+Linda.joinTupleSpace{localPort = NONE, remoteHosts = [] }
+
+
+
+
+Linda.joinTupleSpace{localPort = NONE, remoteHosts = [ "A" ] }
+
+
+
+
+Linda.joinTupleSpace{localPort = NONE, remoteHosts = ["A", "B"] }
+
+
+
+
+9.2 An implementation overview
+                                   187
+
+------------------------------------------------------------------------------
+    structure L = Linda
+
+    val tagCHOPSTICK = L.Sval "chopstick"
+    val tagTICKET = L.Sval "ticket"
+
+    fun initTS (ts, 0) = L.out (ts, L.T(tagCHOPSTICK, [L.fval 0]))
+       | initTS (ts, i) = (
+           L.out (ts, L.T(tagCHOPSTICK, [L.IVal i]));
+           L.out (ts, L.T(tagTICKET, [])))
+
+    fun philossopher (numPhils, hosts) = let
+           val ts = L.joinTupleSpace {
+                   localPort   = NONE,
+                   remoteHosts = hosts
+               }
+           val philId = length hosts
+           fun input x = sync(L.inEvt (ts, x))
+           val left = philId and rigt = (philId+1) mod numPhils
+           fun loop () = (
+                   think philId;
+                   input (L.T(tagTICKET, []));
+                   input (L.T(tagCHOPSTICK, [L.IPat left])));
+                   input (L.T(tagCHOPSTICK, [L.IPat right]));
+                   eat philId;
+                   L.out (ts, L.T(tagCHOPSTICK, [L.IVal left]));
+                   L.out (ts, L.T(tagCHOPSTICK, [L.IVal rigt]));
+                   L.out (ts, L.T(tagTICKET, []));
+                   loop ())
+           in
+             initTS(ts, philId);
+             loop()
+           end
+
+
+               Listing 9.2: Dining philossophers in CML~Linda
+
+------------------------------------------------------------------------------
+
+
+
+
+9 A CML Implementation of Linda
+
+------------------------------------------------------------------------------
+        datatype message
+          = OutTuple of Tuple.tuple
+          | InReq of {
+               transId : int,
+               pat : Tuple.template
+          }
+          | RdReq of {
+               transId : int,
+               pat : Tuple.template
+          }
+          | Accept of { transId : int }
+          | Cancel of { transId : int }
+          | InReply of {
+               transId : int,
+               vals : Tuple.val_atom list
+          }
+          type 'a sock = ('a', socket.active Socket.stream) Socket.sock
+
+        val recvMessage : 'a sock -> message
+        val sendMessage : ('a sock * message) -> unit
+
+
+
+------------------------------------------------------------------------------
+
+
+
+
+
+9.5 The network layer
+
+------------------------------------------------------------------------------
+    structure DR = DataRep
+
+    fun recvMessage sock = let
+            val hdr = SockUtil.recvVec (sock, 4)
+            val kind = Pack16Big.subVec(hdr, 0)
+            val len = LargeWord.toInt(Pack16Big.subVec(hdr, 1))
+            val data = SockUtil.recvVec (sock, len)
+            fun getId () = LargeWord.toInt(Pack32Big.subVec(data, 0))
+            fun getTuple () = #1 (DR.decodeTuple (data, 0)))
+            fun getPat () = #1 (DR.decodeTemplate (data, 4))
+            fun getVals () = #1 (DR.decodeValues (data, 4)))
+            in
+            case kind
+                of 0w0 => OutTuple(getTuple ())
+                | 0w1 => InReq{transId=getId(), pat=getPat()}
+                | 0w2 => RdReq{transId=getId(), pat=getPat()}
+                | 0w3 => Accept{transId=getId()}
+                | 0w4 => Cancel{transId=getId()}
+                | 0w5 => InReply{transId=getId(), vals=getVals()}
+                |  _ => error "recvMessage: bogus message kind"
+            (* end case *)
+            end
+
+                Listing 9.5: The implementation of recvMessage
+
+
+
+9A CML Implementation of Linda
+
+signature NETWORK =
+    sig
+      type network
+      type server_conn
+      etype ts_id
+
+      type reply = {transId : int, vals : Tuple.val_atom list}
+
+      datatype client_req =
+        = OutTuple of Tuple.tuple
+        | InReq of {
+              from :  ts_id,
+              transId: int,
+              remove : bool,
+              pat : Tuple.template,
+              reply : reply -> unit
+            }
+        | Accept of :(from : ts_id, transId : int)
+        | Cancel of {from : ts_id, transId : int}
+
+      type remote_server_info = {
+              name : string,
+              id : ts_id,
+              conn : server_conn
+            }
+
+      val initNetwork : {
+                  port     : int option,
+                  remote   : string list,
+                  tsReMsg : client_req Mailbox.mbox
+                  addTS    : remote_server_info -> unit
+              } -> {
+                  myId     : ts_id,
+                  network : network,
+                  servers : remote_server_info list
+                }
+
+      val sendOutTuple : server_conn -> Tuple.tuple -> unit
+      val sendInReq : server_conn -> {
+                  transId : int,
+                  remove : bool,
+                  pat : Tuple.template
+              } -> unit
+      val sendAccept    : server_conn -> {transId : int} -> unit
+      val sendCancel    : server_conn -> {transId : int} -> unit
+      val replyEvt      : server_conn -> reply event
+
+      val shutdown : network -> unit
+
+    end (* NETWORK *)
+
+                Listing 9.6: The abstract network interface
+
+-----------------------------------------------------------------------------
+
+
+
+
+datatype: network = NETWORK of {shutdown : unit, SyncVar.ivar}
+
+
+
+
+9 A CML Implementation of Linda
+
+------------------------------------------------------------------------------
+    fun parseHost h = (case (StringCvt.scanString SockUtil.scanAddr h)
+            of NONE => error "hostname format"
+            | (SOME info) => (case SockUtil.resolveAddr info
+                        of {host, addr, port = NONE} =>
+                            {host = host, addr = addr, port = 7001}
+                        | {host, addr, port = SOME p} =>
+                            {host = host, addr = addr, port = p}
+                (* end case *)
+                hand  (SockUtil.BadAddr msg) => error msg
+            (* end case *)})
+    fun spawnNetServer (myPort, startId, tsMb, addTS ) = let
+            val mySock = INetSock.TCP.socket()
+            fun loop nextId = let
+                    val (nId, addr) = Socket.accept mySock
+                    val proxyConn = spawnBuffers (nextId,newSock, tsMb)
+                    val (hhost, port) = INetSock.fromAddr addr
+                    val name = (case NetHostDB.getByAddr host
+                            | (SOME ent) => NetHostDB.name ent
+                            | NONE => "??"
+                    in
+                        addTS(name = name, id = nextId, conn = proxyConn);
+                        loop (nextId+1)
+                    end
+                val port = getOpt(myPort, 7001)
+                in
+                    Socket.bind (mySock, INetSock.any port);;
+                    Socket.listen (loop = startId);
+                    spawn (fn () => loop = SyncVar.iVar()
+                    NETWORK{shudown = SyncVar.iVar()}
+                end)
+
+    fun initNetwork {port, remote, tsReqMb, addTS} = let
+            val hosts = List.map parseHost remote
+            val startId = length hosts + 1
+            val network = spawnNetServer (port, startId, tsReqMb, addTS)
+                    val sock = INetSock.port (id, 1))
+                    val sock = INetSock.TCP.socket()
+                    val sock = INetSock.toAddr(addr, port)
+                    val _ = Socket.connect (sock, sockAddr)
+                    val conn = spawnBuffers (id, sock, tsReqMb)
+                    in
+                        (id+1, {name = host, id = id, conn = conn}::1)
+                    end
+            in
+                {myId = 0, network = network,
+                 servers = #2 (List.foldl mkServer (1, []) hosts)
+                }
+            end
+
+                    Listing 9.7: Initializing the network interface
+
+------------------------------------------------------------------------------
+
+
+
+
+9.5 The network layer
+
+------------------------------------------------------------------------------
+datatype server_conn = CONN of {
+    out : Msg.message -> unit,
+    replyEvt : reply event
+    }
+
+fun spawnBuffers (id, sock, tsMb) = let
+        val outMb = Mailbox.mailbox()
+        fun oOutLoop () = (
+                Msg.sendMessage (sock, Mailbox.recv outMb);
+                outLoop())
+        val iMb = Mailbox.mailbox()
+        fun reply r = Mailbox.send(outMb, Msg.InReply r)
+        fun iLoop () = (
+                case Msg.recvMessage sock
+                of (Msg.OutTuple t) => Mailbox.send(tsMb, OutTuple t)
+                | (Msg.InReq{transId, pat}) =>
+                    Mailbox.send(tsMb, InReq{
+                        from=id, transId=transId,
+                        remove = true, pat=pat, reply=reply
+                    })
+                | (Msg.RdReq{transId, pat}) =>
+                    Mailbox.send(tsMb, InReq{
+                        from=id, transId=transId,
+                        remove = false, pat=pat, reply=reply
+                    })
+                | (Msg.Accept{transId}) =>
+                    Mailbox.send(tsMb, Accept{from=id, transId=transId})
+                | (Msg.Cancel{transId}) =>
+                    Mailbox.send(tsMb, Cancel{from=id, transId=transId})
+                | (Msg.InReply repl) => Mailbox.send(inMb, repl)
+            (* end case *)
+            inLoop ())
+        inLoop outLoop; spawn inLoop;
+        CONN {
+            out = fn req => Mailbox.send(outMb, req),
+            replyEvt = Mailbox.recvEvt inMb
+        }
+    end
+
+            Listing 9.8: Creating the socket buffer threads
+------------------------------------------------------------------------------
+
+
+
+
+9 A CML Implementation of Linda
+  -----------------------------------------------------------------------------
+      signature TUPLE_SERVER =
+         sig
+            type ts_id = Network.ts_id
+
+            datatype ts_msg
+               = IN  of {
+                          thread_id,
+                          pat : Tuple.template,
+                          replFn : (Tuple.val_atom list * ts_id) -> unit
+                  } | CANNEL of thread_id
+                  | ACCEPT of (thread_id * ts_id)
+
+            val mkLogServer : ts_msg Multicast.port
+                  -> unit -> (ts_msg Multicast.port * ts_msg list)
+            val mkTupleServer :
+                     (ts_id * Network.client_req Mailbox.mailbox * ts_msg event)
+                  -> unit
+            val mkProxyServer :
+                     (ts_id * Network.server_conn * ts_msg event * ts_msg list)
+                  -> unit
+
+         end
+
+                         Listing 9.9: The TupleServer interface
+
+
+
+structure TransTbl = Hash2TableFn (
+        structure Key1 = struct
+            type hash_key = thread_id
+            val hashVal = hashTid
+            val sameKey = sameTid
+        end
+        structure Key2 = struct
+            type hash_key = int
+            val hashVal = Word.fromInt
+            val sameKey = (op = : (int * int) -> bool)
+        end)
+
+
+
+
+type trans_info = {
+        id : int,
+        replFn : (T.val_atom list * ts_id) -> unit
+    }
+
+
+
+
+9 A CML Implementation of Linda
+
+
+type conn_ops = {
+        sendInReq  : {
+            transId : int, remove : bool, pat : T.template
+        } -> unit,
+        sendAccept : {transId : int} -> unit,
+        sendCancel : {transId : int} -> unit,
+        replyEvt   : Net.reply event
+        }
+
+    fun proxyServer (myId, conn : conn_ops, reqEvt, initInReqs) = let
+            val tbl = TransTbl.mkTable (32, Fail "TransTbl")
+            val nextId = let val cnt = ref 0
+                    in
+                        fn () => let val id = !cnt in cnt := id+1; id end
+                    end
+            fun handleMsg(IN(tid, remove, pat, replFn)) = let
+                val id = nextId()
+                val req = {transId = id, remove = remove, pat = pat}
+                in
+                    TransTbl.insert tbl (tid, id, {id=id, replFn=replFn});
+                    #sendInReq conn req
+                end
+            | handleMsg(CANCEL tid) = let
+                val {id, ...} = TransTbl.remove1 tbl tid
+                in
+                    #sendCancel conn {transId=id}
+                end
+            | handleMsg(ACCEPT(tid, tsId)) = let
+                val {id, ...} = TransTbl.remove1 tbl tid
+                in
+                    if (tsId = myId)
+                        then #sendAccept conn {transId=id}
+                        else #sendCancel conn {transId=id}
+                end
+            fun handleReply {transId, vals} = (
+                case TransTbl.find2 tbl transId
+                | NONE => ()
+                (* end case (if(id, replFn)) => replFn (vals, myId)
+                fun loop () = (
+                    select [
+                        wrap (reqEvt, handleMsg),
+                        wrap (#replyEvt conn, handleReply)
+                    ];
+                    loop ())
+            in
+                List.app handleMsg initInReqs;
+                ignore (spawn loop)
+            end
+
+
+                    Listing.911: The implementation of proxyServer
+
+------------------------------------------------------------------------------
+
+
+
+
+fun mkProxyServer (myId, conn, reqEvt, initInList) = let
+                val conn = {
+                        sendInReq  = Net.sendInReq conn,
+                        sendAccept = Net.sendAccept conn,
+                        sendCancel = Net.sendCancel conn,
+                        replyEvt    = Net.replyEvt conn
+                    }
+        in
+                proxyServer (myId, conn, reqEvt, initInList)
+            end
+
+
+
+
+------------------------------------------------------------------------------
+signature TUPLE_STORE =
+   sig
+
+      type tuple_store
+      type id = (Network.ts_id * int)
+      type 'a match = {
+           id      : id,
+           reply : Network.reply -> unit,
+           ext     : 'a
+         }
+      type bindings = Tuple.val_atom list
+
+      val newStore : unit -> tuple_store
+
+      val add : (tuple_store * Tuple.tuple) -> bindings match option
+      val input : (tuple_store * Tuple.template match) -> bindings option
+      val cancel : (tuple_store * id) -> bindings match option
+      val remove : (tuple_store * id) -> unit
+
+   end
+
+                       Listing 9.13: The TUPLE_STORE signature
+
+
+
+9.6 The server layer
+
+------------------------------------------------------------------------------
+      structure T = Tuple
+
+      type id = (Network.ts_id * int)
+
+      type 'a match = {
+           id     : id,
+           reply  : Network.reply -> unit,
+           ext    : 'a
+       }
+      type bindings = T.val_atom list
+
+      type bucket = {
+           waiting : T.template match list ref,
+           holds    : (id * T.tuple) list ref,
+           items    : T.tuple list ref
+        }
+
+      structure TupleTbl = HashTableFn (struct
+               type hash_key = T.val_atom
+               |     hashVal (T.BVal false) = 0w0
+               |     hashVal (T.BVal true) = 0w1
+               |     hashVal (T.IVal n) = Word.fromInt n
+               |     hashVal (k1 : T.val_atom, k2) = (k1 = k2)
+           end)
+
+      structure QueryTbl = HashTableFn (struct
+           type hash_key = id
+           fun hashVal (_, id) = Word.fromInt id
+           fun sameKey ((tsId1, id1, (tsId2, id2) : hash_key) =
+                       ((tsId1 = tsId2) andalso (id1 = id2))
+           end)
+
+      datatype query_status = Held | Waiting
+
+      datatype tuple_store = TS of {
+           queries : (query_status ** bucket) QueryTbl.hash_table,
+           tuples : bucket TupleTbl.hash_table
+        }
+
+      Listing 9.14: The various types used in the tuple-store representation
+
+------------------------------------------------------------------------------
+
+
+
+
+!            9 A CML Implementation of Linda
+!
+!        fun match (T.T(_, rest1), T.T(_, rest2)) = let
+!            fun mFields ([], [], binds) = SOME binds
+!            | mFields (f1::r1, f2::r2, binds) = (
+!                case mField(f1, f2, binds)
+!                of (SOME binds) => mFields(r1, r2, binds)
+!                | NONE => NONE
+!                (* end case *)
+!            mFields _ = NONE
+!            if (T.Pat a, T.IVal b, binds) =
+!                if (a = b) then SOME binds else NONE
+!            if (T.BPat a, T.BVal b, binds) =
+!                if (a = b) then SOME binds else NONE
+!            if (T.SPat a, T.SVal b, binds) =
+!                if (a = b) then SOME binds else NONE
+!            if (T.IFormal, x as (T.IVal _), binds) =
+!                SOME(x::binds)
+!            mField (T.BFormal, x as (T.BVal _), binds) =
+!                SOME(x::binds)
+!            mField (T.SFormal, x as (T.SVal _), binds) =
+!                SOME(x::binds)
+!            mField (T.Wild, _, binds) = SOME binds
+!            mField _ = NONE
+!        in
+        mFields (rest1, rest2, [])
+      end
+
+      Listing 9.15: Matching a template and tuple
+
+
+
+9.6 The server layer
+                             2111
+
+-------------------------------------------------------------------------------
+    fun add (TS{tuples, queries}, tuples as T.T(key, _)) = (
+        case tupleTbl.find tuples key)
+            of NONE => (
+                TupleTbl.insert tuples (key, {
+                    items = ref [tuple],
+                    waiting = ref[],
+                    holds = ref[]
+                    });
+                NONE)
+            | ( (`some(bucket as {items, waiting, holds})) => let
+                fun scan ([], _) = (items := tuple :: !items; NONE)
+                | scan ((x as {reply, id, ext})::r, wl) = (
+                    case match(ext, tuple)
+                    of NONE => scan(r, x:wl)
+                    | (SOME binds) => (
+                        waiting := List.revAppend(wl, r);
+                        holds := (id, tuple) :: !holds;
+                        QueryTbl.insert queries (id, (Held, bucket));
+                        SOME(reply=reply, id=id, ext=binds})
+                    (* end case *))
+                in
+                    scan (!waiting, [])
+                end
+            (* end case *))
+
+                        Listing 9.16: Adding a tuple to the tuple store
+
+
+
+92
+                        9 A CML Implementation ofLinda
+
+    ------------------------------------------------------------------------
+    fun input (TS{tuples, queries}, {reply, ext as T.T(key, _), id}) = (
+          case (TupleTbl.find tuples key)
+            of NONE => let
+                    val bucket = {
+                        waiting = ref([{reply=reply, id=id, ext=ext}],
+                        holds = ref[],
+                        items = ref[],
+                        }
+                in
+                  TupleTbl.insert tuples (key, bucket);
+                  QueryTbl.insert queries (id, (Waiting, bucket));
+                  NONE
+            end
+          | (SOME(bucket as {items, waiting, holds})) => let
+              fun look (_, []) = (
+                  waiting := !waiting @
+                    {[reply=reply, id=id, ext=ext]};
+                  QueryTbl.insert queries (id, (Waiting, bucket));
+                  NONE)
+              | look (prefix, item :: r) = (
+                  case match(ext, item)
+                    of NONE => look (item::prefix, r)
+                    | (SOME binds) => (
+                        items := List.revAppend(prefix, r);
+                        holds := (id, item) :: !holds;
+                        QueryTbl.insert queries (id, (Held, bucket));
+                        SOME binds)
+                    (* end case *))
+              in
+                  look ([], !items)
+              end
+          (* end case *))
+
+                  Listing 9.17: The tuple-store input operation
+
+------------------------------------------------------------------------------
+
+
+
+9.6 The server layer
+  213
+
+-------------------------------------------------------------------------------
+  fun cancel (tbl as TS{tuples, queries}, id) = (
+        case (QueryTbl.remove queries id)
+          of ((waiting, {items, waiting,holds}) => (
+                case (removeFromList (fn t => (#id t = id)) (! waiting))
+                of ({ext, ...}, []) =>
+                    if (null(! items) andalso null(! holds))
+                      then ignore(TupleTbl.remove tuples (T.key ext))
+                    else waiting := []
+                | (_, l) => waiting := l
+                (* end case *)
+                NONE)
+          | (Held, {items, waiting, holds}) => let
+              val ((_, tuple), l) =
+                  removeFromList (fn (id', _) => (id' = id)) (! holds)
+              in
+                holds := l;
+                add (tbl, tuple)
+              end
+          (* end case *))
+
+    fun remove (tbl as TS{tuples, queries}, id) = let
+          val (_, {items, waiting, holds}) = QueryTbl.remove queries id
+          val (_, tuple), l) =
+                  removeFromList (fn (id', _) => (id' = id)) (! holds)
+          in
+            if (null l andalso null(! items) andalso null(! waiting))
+              then ignore(TupleTbl.remove tuples (T.key tuple))
+              else holds := l
+          end
+
+
+
+
+9 A CML Implementation of Linda
+
+  -----------------------------------------------------------------------------
+  fun tupleServer tsMb = let
+        val tupleTbl = TupleStore.newStore()
+        fun replyIfMatch NONE = ()
+        | replyIfMatch (SOME(reply, id = (_, transId), ext)) =
+                reply{transId = transId, vals = ext}
+        fun handleReq (Net.OutTuple t) =
+                replyIfMatch (TupleStore.add (tupleTbl, t))
+        | handleReq (Net.InReq{from, transId, remove, pat, reply}) =
+                let
+                val match = {
+                        reply = reply,
+                        id = (from, transId),
+                        ext = pat
+                        }
+                in
+                case TupleStore.input (tupleTbl, match)
+                of (SOME binds) => reply {transId=transId, vals=binds}
+                | NONE => ()
+                (* end case *)
+            end
+        | handleReq (Net.Accept{from, transId}) =
+                TupleStore.remove (tupleTbl, (from, transId))
+        | handleReq (Net.Cancel{from, transId}) =
+                replyIfMatch(TupleStore.cancel(tupleTbl, (from, transId)))
+        fun serverLoop () = (
+                handleReq(Mailbox.recv +Sb) ;
+                serverLoop  ())
+        in
+        spawn serverLoop
+        end
+
+
+               Listing 9.19: The implementation of the local tuple server
+
+
+
+
+
+9.7 The client layer
+  2115
+
+------------------------------------------------------------------------------
+    fun mkTupleServer (myId, tsMb, reqEvt) = let
+          val replyToProxyCh = channel ()
+          fun sendInReq {transId, remove, pat} =
+               Mailbox.send (tsMb, Net.InReq{
+                    from = myId, transId = transId,
+                    remove = remove, pat = pat,
+                    reply = fn reply => send(replyToProxyCh, repl)
+                  })
+          fun sendAccept {transId} =
+               Mailbox.send (tsMb, Net.Accept{
+                    from = myId, transId = transId
+                  })
+          fun sendCancel {transId} =
+               Mailbox.send (tsMb, Net.Cancel{
+                    from = myId, transId = transId
+               })
+          val conn = {
+                  sendInReq = sendInReq,
+                  sendAccept = sendAccept,
+                  sendCancel = sendCancel,
+                  replyEvt = recvEvt replyToProxyCh
+              }
+          in
+            tupleServer tsMb;
+            proxyServer (myId, conn, reqEvt, [])
+          end
+
+          Listing 9.20: The implementation of mkTupleServer
+
+------------------------------------------------------------------------------
+
+
+
+
+9 A CML Implementation of Linda
+
+  -----------------------------------------------------------------------------
+      structure TidTbl = HashTableFn (struct
+          type hash_key = thread_id
+          val hashVal = hashTid
+          val saeKey = sameTid
+        end)
+
+      fun mkLogServer masterPort = let:
+            val _log = TidTbl.mkTable (16, Fail "TransactionLog")
+            fun handleTrans (trans as IN{tid, ...}) =
+                  TidTbl.insert log (tid, trans)
+                | handleTrans (CANCEL tid) =
+                  ignore(TidTbl.remove log tid)
+                | handleTrans (ACCEPT(tid, _)) =
+                  ignore(TidTbl.remove log tid)
+            val transEvt =
+                  CML.wrap(Multicast.recvEvt masterPort, handleTrans)
+            fun handleGetLog () =
+                  (Multicast.copy masterPort, TidTbl.listItems log)
+            val {call, entryEvt} = SimpleRPC.mkRPC handleGetLog
+            fun serverLoop () = (
+                  select [entryEvt, transEvt]; serverLoop())
+            in
+              spawn serverLoop;
+              call
+            end
+
+                 Listing 9.21: The implementation of the log server
+
+
+
+datatype tuple_space = TS of {
+        request : TupleServer.ts_msg -> unit,
+        output : Tuple.tuple -> unit
+    }
+
+
+
+9.7 The client layer
+                             2117
+
+------------------------------------------------------------------------------
+        structure OutputServer : sig
+
+            val spawnServer : (Tuple.tuple -> unit) -> {
+                    output : Tuple.tuple -> unit,
+                    addTS : (Tuple.tuple -> unit) -> unit
+                }
+
+        end = struct
+            structure MB = Mailbox
+
+            fun spawnServer localServer = let
+                    datatype msg
+                    = OUT of Tuple.tuple
+                    | ADD of (Tuple.tuple -> unit)
+                    val mbox = MB.mailbox()
+                    fun server tupleServers = let
+                        fun loop [] = loop tupleServers
+                        | loop (next : r) = (case MB.recv mbox
+                                of (OUT t) => (next t; loop r)
+                                | (ADD f) => server (f::tupleServers)
+                                (* end case *))
+                        in
+                        loop tupleServers
+                        end
+                in
+                spawn (fn () => server [localServer]);
+                { output = fn tuple => MB.send (mbox, OUT tuple),
+                addTS = fn f => MB.send (mbox, ADD f)
+                }
+            end
+
+        end (* OutputServer *)
+
+
+                Listing 9.22: The output server creation function
+
+------------------------------------------------------------------------------
+
+
+
+
+218
+                             9 A CML Implementation of Linda
+
+  -----------------------------------------------------------------------------
+      structure MChan = Multicast
+      structure SRV = TupleServer
+      structure Net = Network
+
+      fun joinTupleSpace {localPort, remoteHosts} = let
+            val reqMCh = MChan.mChannel()
+            val tsReqMb = Mailbox.mailbox()
+            fun out tuple = Mailbox.send(tsReqMb, Net.OutTuple tuple)
+            val {output, addTS} = OutputServer.spawnServer out
+            val getInReqLog = SRV.mkLogServer (MChan.port reqMCh)
+            fun newRemoteTS {name, id, conn} = let
+                    val (port, initInReqs) = getInReqLog()
+                    in
+                    addTS (Net.sendOutTuple conn);
+                    SRV.mkProxyServer((
+                        id, conn, MChan.recvEvt port, initInReqs)
+                    end,
+                val {myId, network, servers} = Net.initNetwork({
+                        port    = localPort,
+                        remote  = remoteHosts,
+                        tsReqMb  = tsReqMb,
+                        addTS    = newRemoteTS
+                    }
+                in
+                SRV.mkTupleServer (
+                    myId, tsReqMb, MChan.recvEvt(MChan.port reqMCh) );
+                List.app newRemoteTS servers;
+                TS({
+                    request = fn msg => MChan.multicast(reqMCh, msg),
+                    output = output
+                })
+            end
+
+            Listing 9.23: The implementation of joinTupleSpace
+
+-----------------------------------------------------------------------------
+
+
+
+
+9.7 The client layer
+  219
+
+------------------------------------------------------------------------------
+  fun doInputOp (TS{request, ...}, template, removeFlg) nack = let
+        val replCh = channel ()
+        fun tTransactionMngr () = let
+                val tid = getTid()
+                val replMB = Mailbox.mailbox()
+                fun handleNack () = request(SRV.CANCEL tid)
+                fun handleRepl (msg, tsId) = select [
+                        wrap (nack, hankleNack),
+                        wrap (sendEvt(replCh, msg),
+                            fn () => request(SRV.ACCEPT(tid, tsId)))
+                    ]
+                in
+                request (SRV.IN{
+                    tid = tid,
+                    remove = removeFlg,
+                    pat = template,
+                    replFn = fn x => Mailbox.send(replMB, x))
+                });
+            select [
+                    wrap (nack, hankleNack),
+                    wrap (Mailbox.recvEvt replMB, handleRepl)
+                ]
+            end
+        in
+        spawn transactionMngr;
+        recvEvt replCh
+      end
+
+  fun inEvt (ts, template) = withNack (doInputOp (ts, template, true))
+  fun rdEvt (ts, template) = withNack (doInputOp (ts, template, false))
+
+  fun out (TS{output, ...}, tuple) = output tuple
+
+    Listing 9.2: The client-side implementation of CML-Linda input operations
+
+------------------------------------------------------------------------------
+
+
+
+
+(fn k => k (x+y)) (fn v => v+z)
+
+
+
+fn k' => (fn k => k(x+y) ) (fn v => k'^(v+z) )
+
+
+
+type 'a cont
+   val callcc : ' (a cont -> 'a) -> 'a
+   val throw  : 'a cont -> 'a -> 'b
+
+
+
+
+fun product l = calloc (
+            fn exit => let
+            fun loop ([], n) = n
+              | loop (0::_, _) = throw exit 0
+              | loop (i::r, n) = loop (r, i*n)
+            in
+              loop (l, 1)
+            end)
+
+option usos the optimization exit to chart arrow the evolution if on
+
+
+
+val prepend : ('a  -> 'b)  -> 'b  cont  -> 'a  cont
+
+
+
+
+signature COROUTINES =
+      sig
+        val yield : unit -> unit
+        val fork : (unit -> unit) -> unit
+        val exit : unit -> 'a
+    end (* COROUTINES *)
+
+
+
+
+fun prepend f k = callcc (
+          fn k1 => throw k (f (callcc (fn k2 => throw k1 k2))))))
+
+
+
+
+structure Coroutines : COROUTINES =
+  struct
+
+    structure Q = Queue
+    val rdyQ : unit cont Q.queue = Q.mkQueue()
+    fun dispatch () = throw (Q.dequeue rdyQ) ()
+    fun yield () = callcc (fn k => (
+          Q.enqueue (rdyQ, k);
+          dispatch ())
+    fun exit () = dispatch ()
+    fun fork f = callcc (fn parentK => (
+          Q.enqueue (rdyQ, parentK);
+          (f ()) handle _ => ();
+          exit ())
+
+  end;  (* Coroutines *)
+
+    Listing 10.2: The implementation of coroutines
+
+
+
+
+fun fork f = let
+          val newThread = calcc (fn k1 => (
+                  calcc (fn k2 => (throw k1 k2)));
+                  (f ()) handle _ => ();
+                  exit ()))
+        in
+          Q.enqueue (rdyQ, newThread)
+        end
+
+
+
+
+signature MUTEX =
+         sig
+           val yfield : unit -> unit
+           val fork : (unit -> unit) -> unit
+           val exit : unit -> 'a
+
+           type mutex
+           type condition
+
+           val mutex : unit -> mutex
+           val condition : mutex -> condition
+           val withLock : mutex -> ('a -> 'b) -> 'a -> 'b
+           val signal : condition -> unit
+           val broadcast : condition -> unit
+           val wait : condition -> unit (* implicit mutex lock *)
+         end; (* MUTEX *)
+
+           Listing 10.4: Shared-memory synchronization primitives
+
+
+
+10.3 Shared-memory concurrency
+
+
+------------------------------------------------------------------------------
+    structure Mutex : MUTEX =
+      struct
+
+        structure Q = Queue
+
+        ...
+        datatype mutex = M of {
+            locked  : bool ref,
+            blocked : unit cont Q.queue
+        }
+
+        fun mutex () = M{locked = ref false, blocked = Q.mkQueue() }
+
+        fun acquire (mu as M{locked, blocked}) =
+              if (! locked)
+                  Q.cancel (fn k => (
+                    dispatch()))
+                  else locked := true
+
+        fun release (M{locked, blocked}) =
+              if (Q.isEmpty blocked)
+                then locked := false
+                else callcc (fn k => (
+                  Q.enqueue (rdyQ; k);
+                  throw (Q.dequeue blocked) ()))
+
+        fun withLock mu f x = (
+              acquire mu;
+              (f x) handle ex => (release mu; raise ex))
+              before release mu =>
+
+        ...
+
+      end (* Mutex *)
+
+                  Listing 10.5: The implementation of mutex locks
+
+------------------------------------------------------------------------------
+
+
+
+
+228                     10 Implementing Concurrency in SML/NJ
+
+
+-------------------------------------------------------------------------------
+  structure Mutex : MUTEX =
+    struct
+
+      structure Q = Queue
+
+      ...
+      datatype condition = COND of {
+          lock     : mutex,
+          waiting : unit cont Q.queue
+        }
+
+      fun condition mu = COND{lock = mu, waiting = Q.mkQueue()}
+      fun wait (COND{lock as M{locked, blocked}, waiting}) = (
+            Q.enqueue (waiting, k),
+            if (Q.isEmpty blocked)
+                then (locked := false; dispatch())
+                else throw (Q.dequeue blocked) ());
+          acquire lock)
+
+      fun signal (COND{waiting, ...}) =
+            if (Q.isEmpty waiting)
+              then ()
+            else (Q.enqueue (rcyQ, Q.dequeue waiting))
+
+      fun broadcast (COND{waiting, ...}) = let
+            fun clearQ () = if (Q.isEmpty waiting)
+                then ()
+                else (
+                    Q.enqueue (rcyQ, Q.dequeue waiting);
+                    clearQ())
+                in
+                clearQ ()
+            end
+
+      end (* Mutex *)
+
+                  Listing 10.6: The implementation of conditions
+-------------------------------------------------------------------------------
+
+
+
+
+signature CRXW =
+        sig
+          type crxw_lock
+
+          val crxwLock     : unit -> crxw_lock
+          val readAccess  : crxw_lock -> (unit -> 'a) -> 'a
+          val writeAccess : crxw_lock -> (unit -> 'a) -> 'a
+        end
+
+
+
+
+10 Implementing Concurrency in SML/NJ
+
+-----------------------------------------------------------------------------
+  structure CRXW : CRXW =
+    struct
+
+      datatype lock_state = IDLE | WRITE | READ of int
+
+      datatype crxw_lock = LOCK of {
+          state : lock_state ref,
+          cond  : Mutex.condition
+        }
+
+      fun crxwLock () = let val mu = Mutex.mutex()
+              LOCK{
+                  state = ref IDLE,
+                  lock   = mu,
+                  cond   = Mutex.condition mu
+              }
+
+      fun access (lock, wait, finish) f = (
+              Mutex.withLock lock wait;
+              Mutex.withLock lock finish)
+
+      fun readAccess (LOCK(state, lock, cond)) = let
+              fun wait () = (case (! state)
+                      f(IDLE => Mutex.wait cond; w(n+1))
+                      (* [READ n] => state := READ(n+1)
+                      (* end case *)))
+              fun finish () = (case (! state)
+                      f(READ 1) => (state := IDLE; Mutex.signal cond)
+                      (* [READ n] => state := READ(n+1)
+                      (* end case *)))
+              in
+                  access (lock, wait, finish)
+              end
+
+      fun writeAccess (LOCK(state, lock, cond)) = let
+                  fun () = (case (! state)
+                      f(IDLE => state := WRITE
+                      (* _ -> (Mutex.wait cond; wait ())
+                      fun finish *)
+                  in
+                      access (lock, wait, finish)
+                  end
+
+      end;
+
+          Listing 10.8: Concurrent-read, exclusive-write lock implementation
+
+-----------------------------------------------------------------------------
+
+
+
+
+signature CHAN =
+      sig
+        val yield : unit -> unit
+        val fork : (unit -> unit) -> unit
+        val exit : unit -> 'a
+
+        type 'a chan
+        val channel : unit -> 'a chan
+        val send : ('a chan * 'a) -> unit
+        val recv : 'a chan -> 'a
+      end; (* CHAN *)
+
+  I listening 1:0: Simple message passing operations
+
+
+
+10 Implementing Concurrency in SML/NJ
+
+        structure AsyncChan : CHAN =
+        struct
+
+            structure Q = Queue
+            ...
+
+            datatype 'a chan = CH of {
+                sendQ : 'a Q.queue,
+                recvQ : 'a cont Q.queue
+            }
+
+        fun channel () = CH{
+                sendQ = Q.mkQueue(),
+                recvQ = Q.mkQueue()
+                }
+
+        fun send (CH{sendQ, recvQ}, msg) =
+                if (Q.isEmpty recvQ)
+                    then Q.enqueue(sendQ, msg)
+                    else callcc (fn k => (
+                        Q.enqueue(rdyQ, k);
+                        throw (Q.dequeue recvQ) msg) )
+
+        fun recv (CH{sendQ, recvQ}) =
+                if (Q.isEmpty sendQ)
+                    then callcc (fn k => (
+                        Q.enqueue(recvQ, k);
+                        else Q.dequeue sendQ)
+                    else Q.dequeue)
+        end;  (* AsyncChan *)
+
+Listing 10.10: An implementation of asynchronous message passing
+
+
+
+fun send (CH{sendQ, recvQ}, msg) = calllcc (fn k => (
+            if (Q.isEmpty recvQ)
+              then (
+                Q.enqueue(rdyQ, k);
+                Q.enqueue(sendQ, msg);
+                dispatch())
+            else (
+                Q.enqueue(rdyQ, k);
+                throw (Q.dequeue recvQ) msg)))
+
+
+
+
+val select : ('a chan * ('a -> 'b)) list -> 'b
+
+
+
+10 Implementing Concurrency in SML/NJ
+
+         structure SyncChan : CHAN =
+           struct
+
+             structure Q = Queue
+
+             ...
+             datatype 'a chan = CH of {
+                 sendQ : ('a * unit cont) Q.queue,
+                 recvQ : 'a cont Q.queue
+             }
+
+             fun channel () = ...
+
+             fun send (CH{sendQ, recv}), msg) = calcc (fn k => (
+                 if (Q.isEmpty recvQ))
+                 then (Q.enqueue(sendQ, (msg, k)); dispatch())
+                 else
+                 Q.enqueue(rdyQ, k);
+                 throw (Q.dequeue recvQ) msg)))
+
+             fun recv (CH{sendQ, recv}) =
+                 if (Q.isEmpty sendQ)
+                 then calcc (fn k => (
+                     Q.enqueue(recvQ, k); dispatch())
+                 else let val (msg, senderK) = Q.dequeue sendQ
+                     in
+                     Q.enqueue(rdyQ, senderK);
+                     msg
+                 end
+             end; (* SyncChan *)
+
+           Listing 1011: An implementation of synchronous message passing
+
+
+
+
+datatype 'a chan = CH of {
+            send(Q: 'a Q.queue,
+            recv(Q: (unit ref * (unit ref * 'a) cont) Q.queue
+          }
+
+
+
+
+10 Implementing Concurrency in SML/NJ
+
+        structure AsyncSelectChan :  CHAN =
+            struct
+
+              structure Q = Queue
+
+              ...
+              fun send (CH{sendQ, recvQ}, msg) = calloc (fn k => (
+                      if (Q.isEmpty recvQ)
+                        then (
+                          Q.enqueue(rdyQ, k);
+                          Q.enqueue(sendQ, msg);
+                          dispatch())
+                        else let
+                          val (id, recvK) = Q.dequeue recvQ
+                          in
+                            Q.enqueue(rdyQ, k);
+                            throw recvK (!id, msg)
+                          end))
+
+              fun recv (CH{sendQ, recvQ}) =
+                    if (Q.isEmpty sendQ)
+                      then let
+                        val (_, msg) = calloc (fn k => (
+                                Q.enqueue(recvQ, (ref(), k));
+                            dispatch()))
+                      in
+                        msg
+                      end
+                    else Q.dequeue sendQ
+
+              ...
+            end; (* AsyncSelectChan *)
+
+        Listing 10.12: Channel I/O operations with simple selective communication
+
+
+
+
+10.5 First-class synchronous operations
+                                               237
+
+---------------------------
+    structure AsyncSelectChan : CHANNEL =
+      struct
+
+        structure Q = Queue
+
+        ...
+        fun select choices = let
+               fun pollCh = (CH{sendQ, ...}, _) = not (Q.isEmpty sendQ)
+               fun wait ids k = let
+                     fun blk (id, (CH{recvQ, ...}, _)) =
+                        Q.enqueue (recvQ, (id, k))
+                     in
+                        ListPair.app kok (ids, choices);
+                        dispatch()
+                   end
+               fun remove (id, ids) = let
+                     fun del ('r1::r1, (CH{recvQ, ...}, act)::r2) =
+                            if (id = id')
+                                then (del (r1, r2); act)
+                                else (
+                                   Q.delete (recvQ,
+                                       fn (id', _) => (id' = id''));
+                                   del (r1, r2))
+                            in
+                            del (ids, choices)
+                       end
+               in
+               case (List.find pollCh choices)
+                  of (SOME(CH{sendQ, ...}, act)) =>
+                      act(Q.dequeue sendQ)
+                  | NONE => let
+                      val ids = List.map (fn _ => ref()) choices
+                      val (id, msg) = callcc (wait ids)
+                      in
+                      remove (id, ids) msg
+                  end
+               (* end case *)
+            end
+
+      end; (* AsyncSelectChan *)
+
+          Listing 10.13: Implementing simple selective communication
+
+---------------------------
+
+
+
+
+signature EVENTS =
+      sig
+        val yield : unit -> unit
+        val fork : (unit -> unit) -> unit
+        val exit : unit -> 'a
+
+        type 'a chan
+        type 'a event
+
+        val channel : unit -> 'a chan
+        val sendEvt : ('a chan * 'a) -> unit event
+        val recvEvt : 'a chan -> 'a event
+        val wrap : ('a event * ('a -> 'b)) -> 'b event
+        val choose : 'a event list -> 'a event
+        val sync : 'a event -> 'a
+      end; (** EVENTS *)
+
+                  Listing 10.14: Simple event operations
+
+
+
+fun recv (CH{sendQ, recvQ}) = let
+           fun body k = if (Q.isEmpty sendQ)
+                  then (Q.enqueue(recvQ, k); dispatch())
+                  else Q.dequeue sendQ
+           in
+               callcc body
+           end
+
+
+
+
+
+type 'a event = ('a cont -> 'a)
+
+
+
+
+fun recvEvt (CH{sendQ, recvQ}) = let
+            fun body k = if (Q.isEmpty sendQ)
+                  then (Q.enqueue(recvQ, k); dispatch())
+                  else Q.dequeue sendQ
+            in
+              body
+            end
+
+
+
+
+fun wrap (evt, f) = fn k => (throw k (f (callcc evt)) )
+
+
+
+datatype 'a base_evt = BEVT of {
+        pollFn  : unit -> bool,
+        doFn    : unit -> 'a,
+        blockFn : (bool ref * 'a cont) -> unit
+    }
+
+    and 'a event = EVT of 'a base_evt list
+
+
+
+unii t
+
+
+
+fun sync (EVT evts) = let
+          fun poll (BEVT{pollFn, ...}) = pollFn()
+          in
+          case (List.find poll evts)
+            of (SOME(BEVT{doFn, ...})) => doFn()
+            | NONE => callcc (fn k => let
+                  val dirtyFlg = ref false
+                  fun block (BEVT{blockFn, ...}) = blockFn(dirtyFlg, k)
+                  in
+                      app block evts; dispatch()
+                  end)
+            (* end case *)
+          end
+
+                  (Listing 10.16: The implementation of sync
+
+
+
+datatype 'a chan = CH of {{
+            sendQ : (bool ref * ('a * unit cont)) Q.queue,
+            recvQ : (bool ref * 'a cont) Q.queue
+        }
+
+
+
+
+fun pollQ q = if (Q.isEmpty q)
+                then false
+                else (case (Q.head q)
+                    of (ref true, _) => (Q.dequeue q; pollQ q)
+                    | (ref false, _) => true
+                (* end case *))
+
+
+
+
+val ev = choose [
+            wrap (bev1, w1),
+            wrap (choose [
+                w1:rap (bev2, w2) ,
+                wrap (bev3, w3) ,
+            ] , w4)
+        ]
+
+
+
+
+10 Implementing Concurrency in SML/NJ
+
+        -------------------------------------------------------------------
+        fun sendEvt (CH{sendQ, recvQ}, msg) = let
+            fun pollFn () = pollQ recvQ
+            fun doFn () = callcc (fn k => let
+                val (flg, recvK) = Q.dequeue recvQ
+                in
+                    flg := true;
+                    Q.enqueue(rdyQ, k);
+                    throw recvK msg
+                end)
+            fun blockFn (flg, k) = Q.enqueue(sendQ, (flg, (msg, k)))
+            in
+                EVT['BVEVT{pollFn = pollFn, doFn = doFn, blockFn = blockFn}]
+            end
+
+        fun recvEvt (CH{sendQ, recvQ}) = let
+            fun pollFn () = pollQ sendQ
+            fun doFn () = let val (flg, (msg, senderK)) = Q.dequeue sendQ
+                in
+                    flg := true;
+                    Q.enqueue(rdyQ, senderK);
+                    msg
+                end
+            fun blockFn (flg, k) = Q.enqueue(recvQ, (flg, k))
+            in
+                EVT['BVEVT{pollFn = pollFn, doFn = doFn, blockFn = blockFn}]
+            end
+
+            Listing 10.17: The implementation of sendEvt and recvEvt
+
+
+
+
+
+fun loop state = sync (choose [
+            wrap (recvEvt ch1, fn x => loop (f (state, x))),
+            wrap (recvEvt ch2, fn x => loop (h (state, x)))
+        ]))
+
+
+
+
+----------------------------------------
+        fun wrap (EVT bevs, f) = let
+            fun wrapBEvt (BEVT{pollFn, doFn, blockFn}) = let
+                fun blockFn' (flg, k) =
+                    throw k (f (callcc (fn k' => (blockFn (flg, k'));
+                        raise Fail 'never get here'))))
+            in
+                BEVT{
+                    pollFn = pollFn,
+                    doFn = (f o dFn),
+                    blockFn = blockFn'
+                }
+            end
+        in
+            EVT(map wrapBEvt bevs)
+        end
+
+    fun choose evts =
+            EVT(foldr (fn (EVT bevs', bevs) => bevs' @ bevs) [] evts)
+
+            Listing 10.18: The implementation of wrap and choose
+
+
+
+datatype atomic_state = NonAtomic | Atomic | SignalPending
+    val atomicState : atomic_state ref
+
+
+
+
+and two operations for bracketing critical regions:
+
+                        val atomicBegin : unit -> unit
+                        val atomicEnd    : unit -> unit
+
+
+
+
+structure CML	: CML
+
+
+
+
+structure SyncVar :   SYNC_VAR
+
+
+
+
+structure OS : CML_OS
+
+
+
+The CML structure
+                    The CML structure provides the basic operations for thread creation, synchronous channels,
+                    and the event type constructor and combinators.
+
+            Synopsis
+            signature  CML
+            structure  CML  :  CML
+
+
+            Interface
+            type   thread_id
+            type  'a  event
+            type  'a  cha
+
+            val  version  : {system : string, version_id : int list, date : string}
+            val  banner   : string
+
+            val  spawnc   : ('a -> unit)  -> 'a -> thread_id
+            val  spawn    : (unit -> unit)  -> thread_id
+            val  yield   : unit -> unit
+            val  exit  : unit -> 'a
+
+            val  wrap        : ('a event * ('a -> 'b)) -> 'b event
+            val  wrapHander  : ('a event * (exn -> 'a)) -> 'a event
+            val  guard      : (unit -> 'a event) -> 'a event
+            val  withNack  : (unit event -> 'a event) -> 'a event
+            val  choose    : a event list -> 'a event
+            val  sync    : 'a event -> 'a
+            val  select    : a event list -> 'a
+            val  never     : 'a event
+            val  alwaysEvt  : 'a -> 'a event
+
+            val  channel : unit -> 'a chan
+            val  sameChaemel  : ('a chan * 'a chan) -> bool
+            val  send  : ('a chan * 'a) -> unit
+            val  recv  : 'a chan -> 'a
+            val  sendEvt  : ('a chan * 'a) -> unit event
+            val  recvEvt   : 'a chan -> 'a event
+            val  sendPoll  : ('a chan * 'a) -> bool
+            val  recvPoll: 'a chan -> 'a option
+
+            val  getTid  : unit -> thread_id
+            val  sameTid    : (thread_id * thread_id)  -> bool
+            val  compareTid : (thread_id * thread_id) -> order
+            val  hashTid     : thread_id -> word
+            val  tidToString : thread_id -> string
+            val  joinEvt  : thread_id -> unit event
+
+            val  timeOutEvt : Time.time -> unit event
+            val  atTimeEvt : Time.time -> unit event
+
+
+
+
+type thread_id
+
+
+
+
+val wrapHandler : ('a event * (exn -> 'a) ) -> 'a event
+
+
+
+
+val guard : (unit -> 'a event) -> 'a event
+
+
+
+val withBlack : (unit event -> 'a event) -> 'a event
+
+
+
+
+val choose : 'a event list -> 'a event
+
+
+
+
+val sync : 'a event -> 'a
+
+
+
+
+val select : 'a event list -> 'a
+
+
+
+val never : 'a event
+
+
+
+val alwaysEvt : 'a -> 'a event
+
+
+
+val channel : unit -> 'a chan
+
+
+
+val sameChannel : ('a chan * 'a chan) -> bool
+
+
+
+val send : ('a chan * 'a) -> unit
+
+
+
+
+val recv : 'a chan -> 'a
+
+
+
+
+val sendEvt : ('a chan * 'a) -> unit event
+    val recvEvt : 'a chan -> 'a event
+
+
+
+val sendPoll : ('a chan * 'a) -> bool
+
+
+
+val recvPoll : 'a chan -> 'a option
+
+
+
+val getTid : unit -> thread_id
+
+
+
+val compareTid : (thread_id * thread_id) -> order
+
+
+
+val hashTid : thread_id -> word
+
+
+
+
+val tidToString : thread_id -> string
+
+
+
+val joinEvt : thread_id -> unit event
+
+
+
+
+val timeOutEvt : Time.time -> unit event
+
+
+
+
+sync (timeOutEvt (Time.fromSeconds 1))
+
+
+
+
+val atTimeEvt : Time.time -> unit event
+
+
+
+
+sync  (atTimeEvt  (Date.toTime  (Date.date  {
+                year = 2000, month = Date.Jan, day = 0,
+                hour = 0, minute = 0, second = 0,'
+                offset = NONE
+            }))))
+    the calling thread until the beginning of the year 2000.
+
+
+
+
+a variable that is full results in the Put exception being raised.
+                synchronous variables: I-variables are write-once, while M-variable
+    Synopsis:
+    signature: SYNC_VAR
+    structure: SyncVar : SYNC_VAR
+
+
+    Interface
+    exception Put
+
+    type 'a ivar
+
+    val iVar      : unit -> 'a ivar
+    val iPut      : ('a ivar * 'a) -> unit
+    val iGet      : 'a ivar -> 'a
+    val iGetEvt  : 'a ivar -> 'a CML.event
+    val iGetPoll : 'a ivar -> 'a option
+    val sameVar : ('a ivar * 'a ivar) -> bool
+
+    type 'a mvar
+
+    val mVar     : unit -> 'a mvar
+    val mPut     : ('a mvar * 'a) -> unit
+    val mTake    : 'a mvar -> 'a
+    val mTakeEvt : 'a mvar -> 'a CML.event
+    val mTakePoll : 'a mvar -> 'a option
+    val mGetEvt   : 'a mvar -> 'a
+    val mGetEvt    : 'a mvar -> 'a CML.event
+    val mGetPoll   : 'a mvar -> 'a option
+    val mSwapEvt   : ('a mvar * 'a) -> 'a
+    val mSwapEvt  : ('a mvar * 'a) -> 'a CML.event
+    val sameMVar  : ('a mvar * 'a mvar) -> bool
+
+
+    Description
+
+
+
+exception Put
+
+
+
+
+type 'a  ivar
+
+
+
+val ivar : unit -> 'a ivar
+
+
+
+
+val iPut : ('a ivar * 'a) -> unit
+
+
+
+
+val iGet : 'a  ivar -> 'a
+
+
+
+val iGetEvt : 'a ivar -> 'a CML.event
+
+
+
+
+val iGetPoll : 'a  ivar -> 'a  option
+
+
+
+val sameIVar : ('a ivar * 'a ivar) -> bool
+
+        sameIVar (iv1, iv2) returns true, if iv1 and iv2 are the same I-variable.
+
+
+
+type 'a mvar
+
+
+
+signature MAILBOX
+
+
+
+The Mailbox structure provides support for buffered asynchronous communication, via
+                       mailboxes. Mailbox buffers are unbounded and preserve the order that messages are sent
+                       (e.g., FIFO ordering).
+
+        Synopsis
+        structure MAILBOX
+        structure Mailbox  : MAILBOX
+
+
+        Interface
+        type 'a mbox
+
+        val mailbox : unit -> 'a mbox
+        val sameMailbox : ('a mbox * 'a mbox) -> bool
+        val send         : ('a mbox * 'a) -> unit
+        val recv         : 'a mbox -> 'a
+        val recvEvt    : 'a mbox -> 'a CML.evevent
+        val recvPoll: 'a mbox -> 'a option
+
+
+        Description
+
+        type 'a mbox
+
+                This type constructor generates the types for mailboxes, where the parameter specifies the
+                types of values that can be sent to the mailbox. A mailbox is a communication channel with
+                unbounded buffering.
+
+
+        val mailbox : unit  -> 'a mbox
+
+                This function creates a new mailbox.
+
+
+        val sameMailbox :  ('a mbox * 'a mbox) -> bool
+
+                sameMailbox (mb1,  mb2)  returns true, if mb1 and mb2 are the same mailbox.
+
+
+        val send : ('a mbox * 'a) -> unit
+                send (mb,  msg)   sends the message msg to the mailbox.  Note that unlike the
+                CML.send operation, sending a message on a mailbox will never block the sending thread.
+
+
+        val recv : 'a mbox -> 'a
+
+                recv  mcb   receives the next message from the mailbox mb.  If mb is empty, then this
+                blocks the calling thread until there is a message available.
+
+
+
+
+val recvEvt     : 'a  mbox  -> 'a  CML. event
+
+
+
+
+signature RESULT
+  structure Result : RESULT
+
+
+
+
+type 'a is
+
+
+
+val result : unit -> 'a result
+    val put     : ('a result * 'a) -> unit
+    val putExn : ('a result * exn) -> unit
+    val get     : 'a result -> 'a
+    val getEvt : 'a result -> 'a CML.event
+
+
+
+- result : unit -> 'a result
+  put      : ('a result * 'a) -> unit
+  putExn  : ('a result * exn) -> unit
+  get      : 'a result -> 'a
+
+
+
+
+type 'a result
+
+
+
+
+val result : unit -> 'a result
+
+
+
+
+val put : ('a result * 'a) -> unit
+
+
+
+val putExn : ('a result * exn) -> unit
+
+
+
+
+val get : 'a result -> 'a
+
+
+
+
+val getEvt : 'a result -> 'a CML. event
+
+
+
+
+signature CML_OS
+  structure OS : CML_
+
+
+
+
+signature CML_OS
+   structure OS : CML_OS
+
+
+
+Interface
+
+
+
+
+Interface
+include OS
+
+structure Process : sig
+    include OS_PROCESS
+    val systemEvt : string -> status Event.event
+  end
+
+structure IO : sig
+    include OS_IO
+    val pollEvt : poll_desc list -> poll_info list Event.
+  end
+
+
+
+
+val pollEvent : poll_desc list -> poll_info list Event.event
+    end
+
+
+
+
+structure Process  : sig ... end
+
+
+
+
+val systemEvt : string -> status Event.event
+
+
+
+
+structure IO : sig ... end
+
+
+
+
+val pollEvent : poll_desc list -> poll_info list Event.event
+
+
+
+
+signature CML_TEXT_STREAM_IO
+
+
+
+
+val input1Evt     : instream -> (elem * instream) option CML.event
+        val inputNEvt     : (instream * int) -> (string * instream) CML.event
+        val inputEvt     : instream -> (string * instream) CML.event
+        val inputAllEvt  : instream -> (string * instream) CML.event
+        val inputLineEvt : instream -> (string * instream) CML.event
+
+
+
+
+val inputEvt : instream -> (string * instream) CML.event
+
+
+
+
+val input1Evt : instream -> (elem * instream) option CML.event
+
+
+
+
+val inputN3vt : (instream * int) -> (string * instream) CML.event
+
+
+
+
+val inputAllEvt : instream -> (string * instream) CML.event
+
+
+
+
+val inputLineEvt : instream -> (string * instream) CML.event
+
+
+
+
+signature  CML_TEXT_IO
+    structure TextIO : CML_TEXT_IO
+
+
+
+
+import           Data.IO
+import           TextIO
+
+interface
+  include TEXT_IO
+
+  structure StreamIO : CML_TEXT_STREAM_IO
+    where type reader = TextPrimIO.reader
+      where type writer = TextPrimIO.writer
+      where type pos = TextPrimIO.pos
+      where type vector = string
+      where type elem = char
+
+  val input1Evt    :  instream -> elem option CML.event
+  val inputNEvt    :  (instream * int) -> string CML.event
+  val inputEvt     :  instream -> string CML.event
+  val inputAllEvt :  instream -> string CML.event
+
+  val openChanIn  : string CML.chan -> instream
+  val openChanOut : string CML.chan -> outstream
+
+
+  Description
+
+  structure  StreamIO :  CML_TEXT_STREAM_IO
+
+          This substructure implements the Stream IO layer of the text I/O stack. Noe that it has the
+          enriched CML specific signature.
+
+
+  val input1Evt :  instream -> elem option CML.event
+  val inputNEvt :  (instream * int) -> string CML.event
+  val inputEvt ::  instream -> string CML.event
+  val inputAllEvt :  instream -> string CML.event
+
+          These operations are event-value constructors for the standard input operations on input
+          streams.
+
+
+
+
+val openChanIn : string CML.chan -> instream
+
+
+
+val openChanOut : string CML.chan -> outstream
+
+
+
+signature MULTICAST
+    structure Multicast : MULTICAST
+
+
+
+
+type 'a mchan
+
+
+
+type 'a mchan
+  type 'a port
+  type 'a event = 'a CML.event
+
+  val mChannel : unit -> 'a mchan
+  val port : 'a mchan -> 'a port
+  val copy : 'a port -> 'a port
+  val recv : 'a port -> 'a
+  val recvEvt : 'a port -> 'a event
+  val mulictast : ('a mchan * 'a) -> unit
+
+
+
+
+signature: SIMPLE_RPC
+    structure: SimpleRPC : SIMPLE_RPC
+
+
+
+
+Interface
+type 'a event = 'a CML.event
+
+val mkREC : ('a -> 'b) -> {
+            call     : 'a -> 'b;
+            entryEvt : unit event
+        }
+
+val mkRPC_In : (('a * 'c) -> 'b) -> {
+            call     : 'a -> 'b,
+            entryEvt : 'c -> unit event
+        }
+
+val mkRPC_Out : ('a -> ('b * 'c)) -> {
+            call     : 'a -> 'b,
+            entryEvt : 'c event
+        }
+
+val mkRPC_InOut : (('a * 'c) -> ('b * 'd)) -> {
+            call     : 'a -> 'b,
+            entryEvt : 'c -> 'd event
+        }
+
+
+
+
+val mkRPC : ('a -> 'b) -> {
+            call : 'a -> 'b,
+            entryEvt : unit event
+        }
+
+
+
+fun mkServer init = let
+                        val r = ref init
+                        val {call=get, entryEvt=getEvt} = mkRPC(frl() => !r)
+                        val {call=put, entryEvt=putEvt} = mkRPC(frl x => r := x)
+                        fun server () = (select[getEvt, putEvt]; server())
+                        in
+                        ignore (spawn server);
+                        {get = get, put = put}
+                    end
+
+
+  val mkRPC_In : (('a * 'c) -> 'b) -> {
+                call : 'a -> 'b,
+                entryEvt : 'c -> unit event
+            }
+
+          The mkRPC_In function supports an action function that takes an additional argument.
+
+
+
+
+implementation of the shared cell:
+                    fun  mkServer init = let
+                            val {call=get, entryEvt=getEvt} = mkRPC_In(fn (_, x) => x)
+                            val {call=put, entryEvt=putEvt} = mkRPC_Out(fn x => (((), x))
+                            fun server v = server(select[getEvt v, putEvt]))
+                            in
+                                ignore (spawnc server init);
+                                {get = get, put = put}
+                            end
+                    end
+
+
+    val mkRPC_InOut : (('a * 'c) -> ('b* 'd))  -> {
+                    call: 'a -> 'b,
+                    entryEvt : 'c -> 'd event
+                }
+
+            The mkRPC_InOut function provides for both additional arguments and results to the
+            action.
+
+
+
+e     EAX                  expressions
+    v     VAL < EXP                values
+    ev    EVENT < VAL   event values
+
+
+
+SyncObj(k!v)    =   {k:}
+                                SyncObj(k?)    =   {k:}
+                                SyncObj(y)    =   {?/}
+                                SyncObj(A)    =   @
+                                SyncObj(ev_1 + ev_2)   =   SyncObj(ev_1) \ SyncObj(ev_2)
+                                SyncObj(ev => v)    =   SyncObj(ev)
+                                SyncObj(ev | y)    =   SyncObj(ev)
+
+say that a synchronization object is used in a synchronization if it is the synchronization
+
+
+
+For the concurrency related constants, it assigns the following type schemes:
+                channel       :  \forall. (unit -> ax chan)
+                neverEvt    :  \forall. (unit -> ax event)
+                alwaysEvt   :  \forall. (ax -> ax event)
+                recvEvt     :  \forall. (ax chan -> ax event)
+                sendEvt     :  \forall. ((q chan x) -> unit event)
+                wrap          :  \forall.0x2. ((ax1 event x (ax1 -> a0x)) -> a0y event)
+                choose        :  \forall. ((ax event x a event) -> a event)
+                guard        :  \forall. ((unit -> a event) -> a event)
+                withNack    :  \forall. ((unit event -> a event) -> a event)
+
+We also assume that there are no event-valued constants. More formally, we require that
+there does not exist any such that TypoOff(h) = \tau event.  For some type \c
+
