@@ -1,17 +1,17 @@
 require "spec"
 require "../src/cml/multicast"
 
-describe CML::MChan do
+describe CML::Multicast::Chan do
   describe "basic multicast" do
     it "allows creating a multicast channel" do
       ch = CML.mchannel(Int32)
-      ch.should be_a(CML::MChan(Int32))
+      ch.should be_a(CML::Multicast::Chan(Int32))
     end
 
     it "allows creating ports" do
       ch = CML.mchannel(Int32)
       port = ch.port
-      port.should be_a(CML::MCPort(Int32))
+      port.should be_a(CML::Multicast::Port(Int32))
     end
 
     it "delivers messages to a single port" do
@@ -137,7 +137,7 @@ describe CML::MChan do
     end
 
     it "works with tuples" do
-      ch = CML::MChan(Tuple(Int32, String)).new
+      ch = CML::Multicast::Chan(Tuple(Int32, String)).new
       port = ch.port
       Fiber.yield
 

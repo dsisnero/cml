@@ -11,12 +11,12 @@ module CML
         iv = CML::IVar(Int32).new
         iv.i_put(99)
         iv.i_get.should eq(99)
-        expect_raises(Exception) {iv.i_put(42) } # already filled
+        expect_raises(Exception) { iv.i_put(42) } # already filled
       end
 
       it "MVar behaves as synchronized mutable cell" do
         mv = CML::MVar(Int32).new
-          mv.m_put(10)
+        mv.m_put(10)
         CML.sync(mv.m_take_evt).should eq(10)
         mv.m_put(20)
         CML.sync(mv.m_take_evt).should eq(20)
@@ -50,7 +50,7 @@ module CML
         end
 
         wrapped_nack = CML.wrap(
-         nack
+          nack
         ) { |x| x }
 
         # Race with timeout, expect cancellation path
@@ -80,8 +80,9 @@ module CML
         end
 
         choice = CML.choose([
-          CML.wrap(guarded){ :timeout},
-          CML.always(:immediate)]
+          CML.wrap(guarded) { :timeout },
+          CML.always(:immediate),
+        ]
         )
         result = CML.sync(choice)
         result.should eq(:immediate)

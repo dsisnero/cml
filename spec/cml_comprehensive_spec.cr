@@ -186,7 +186,7 @@ module CML
 
         num_timeouts.times do |i|
           spawn do
-            evt = CML.wrap(CML.timeout(0.01.seconds * (i + 1))){:timeout}
+            evt = CML.wrap(CML.timeout(0.01.seconds * (i + 1))) { :timeout }
             result = CML.sync(evt)
             results.send(result)
           end
@@ -238,7 +238,7 @@ module CML
         # Create many timeouts in quick succession
         timeouts = Array(Event(Symbol)).new
         50.times do |i|
-          timeouts << CML.wrap(CML.timeout(0.001.seconds * (i + 1))){:timeout}
+          timeouts << CML.wrap(CML.timeout(0.001.seconds * (i + 1))) { :timeout }
         end
 
         # Sync on a choice that includes all timeouts
@@ -269,13 +269,12 @@ module CML
             cleanup_called = true
           end
           ch.send_evt(42)
-         end
-
+        end
 
         # Race the nacked send against a timeout
         choice = CML.choose([
           CML.wrap(nacked_evt) { |_| :nacked },
-          CML.wrap(CML.timeout(0.5.seconds)){:timeout}
+          CML.wrap(CML.timeout(0.5.seconds)) { :timeout },
         ])
 
         result = CML.sync(choice)

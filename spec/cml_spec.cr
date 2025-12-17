@@ -594,8 +594,8 @@ describe CML do
   describe "ThreadId" do
     it "provides current thread ID" do
       tid = CML.get_tid
-      tid.should be_a(CML::ThreadId)
-    end
+    tid.should be_a(CML::Thread::Id)
+  end
 
     it "returns same ID for same fiber" do
       tid1 = CML.get_tid
@@ -605,7 +605,7 @@ describe CML do
 
     it "returns different IDs for different fibers" do
       tid1 = CML.get_tid
-      tid2 : CML::ThreadId? = nil
+      tid2 : CML::Thread::Id? = nil
 
       spawn do
         tid2 = CML.get_tid
@@ -624,7 +624,7 @@ describe CML do
 
     it "supports comparison" do
       tid1 = CML.get_tid
-      tid2 : CML::ThreadId? = nil
+      tid2 : CML::Thread::Id? = nil
 
       spawn do
         tid2 = CML.get_tid
@@ -644,7 +644,7 @@ describe CML do
         executed = true
       end
 
-      tid.should be_a(CML::ThreadId)
+      tid.should be_a(CML::Thread::Id)
       Fiber.yield
       executed.should be_true
     end
