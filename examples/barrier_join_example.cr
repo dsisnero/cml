@@ -2,7 +2,6 @@
 # Example demonstrating CML Barrier and join_evt synchronization primitives
 
 require "../src/cml"
-require "../src/cml/barrier"
 
 # Barrier Example
 # ===============
@@ -18,13 +17,13 @@ puts "Demonstrating how multiple fibers synchronize at a barrier point"
 barrier = CML.counting_barrier(0)
 
 # Create 3 enrollments in the barrier
-enrollments = Array(CML::Enrollment(Int32)).new(3)
+enrollments = Array(CML::Barrier::Enrollment(Int32)).new(3)
 3.times do |_|
   enrollments << barrier.enroll
 end
 
 # Spawn 3 fibers that will synchronize at the barrier
-fibers = [] of CML::ThreadId
+fibers = [] of CML::Thread::Id
 3.times do |i|
   tid = CML.spawn do
     puts "Fiber #{i}: Starting work before barrier"
@@ -66,14 +65,14 @@ state_barrier = CML.barrier(
 )
 
 # Create enrollments
-enrollments2 = Array(CML::Enrollment(Hash(String, Array(Int32)))).new(4)
+enrollments2 = Array(CML::Barrier::Enrollment(Hash(String, Array(Int32)))).new(4)
 4.times do
   enrollments2 << state_barrier.enroll
 end
 
 # Spawn fibers that will pass through the barrier multiple times
 puts "\nRunning 4 fibers through 3 barrier rounds:"
-fibers2 = [] of CML::ThreadId
+fibers2 = [] of CML::Thread::Id
 4.times do |i|
   tid = CML.spawn do
     3.times do |round|
@@ -170,11 +169,11 @@ class WorkerPool
     @phase_barrier = CML.counting_barrier(0)
 
     # Create worker enrollments
-    enrollments = [] of CML::Enrollment(Int32)
+    enrollments = [] of CML::Barrier::Enrollment(Int32)
     n_workers.times { enrollments << @phase_barrier.enroll }
 
     # Spawn workers
-    @workers = [] of CML::ThreadId
+    @workers = [] of CML::Thread::Id
     n_workers.times do |i|
       tid = CML.spawn do
         worker_id = i

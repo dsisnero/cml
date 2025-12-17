@@ -2,7 +2,6 @@
 # Demonstrates using CML barriers without join_evt for synchronization
 
 require "../src/cml"
-require "../src/cml/barrier"
 
 def simple_barrier_example
   puts "=== Simple Barrier Example ==="
@@ -11,7 +10,7 @@ def simple_barrier_example
   barrier = CML.counting_barrier(0)
 
   # Create enrollments for each worker
-  enrollments = Array(CML::Enrollment(Int32)).new(3)
+  enrollments = Array(CML::Barrier::Enrollment(Int32)).new(3)
   3.times do |_|
     enrollments << barrier.enroll
   end
@@ -42,7 +41,7 @@ def multi_phase_barrier_example
   barrier = CML.counting_barrier(0)
 
   # Create enrollments for each worker
-  enrollments = Array(CML::Enrollment(Int32)).new(4)
+  enrollments = Array(CML::Barrier::Enrollment(Int32)).new(4)
   4.times do |_|
     enrollments << barrier.enroll
   end
@@ -82,7 +81,7 @@ def barrier_with_timeout_example
   barrier = CML.counting_barrier(0)
 
   # Create enrollments for each worker
-  enrollments = Array(CML::Enrollment(Int32)).new(3)
+  enrollments = Array(CML::Barrier::Enrollment(Int32)).new(3)
   3.times do |_|
     enrollments << barrier.enroll
   end
@@ -150,7 +149,7 @@ def barrier_for_data_processing
   barrier = CML.counting_barrier(0)
 
   # Create enrollments for each processor
-  enrollments = Array(CML::Enrollment(Int32)).new(3)
+  enrollments = Array(CML::Barrier::Enrollment(Int32)).new(3)
   3.times do |_|
     enrollments << barrier.enroll
   end
@@ -190,7 +189,7 @@ def reusable_barrier_example
   barrier = CML.counting_barrier(0)
 
   # Create enrollments for each worker
-  enrollments = Array(CML::Enrollment(Int32)).new(2)
+  enrollments = Array(CML::Barrier::Enrollment(Int32)).new(2)
   2.times do |_|
     enrollments << barrier.enroll
   end

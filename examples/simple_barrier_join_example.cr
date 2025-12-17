@@ -6,7 +6,6 @@
 # and thread join events.
 
 require "../src/cml"
-require "../src/cml/barrier"
 
 puts "=== CML Barrier and join_evt Example ===\n"
 
@@ -20,11 +19,11 @@ barrier = CML.counting_barrier(0)
 puts "Created barrier for 3 threads"
 
 # Create enrollments for each thread
-enrollments = [] of CML::Enrollment(Int32)
+enrollments = [] of CML::Barrier::Enrollment(Int32)
 3.times { enrollments << barrier.enroll }
 
 # Spawn 3 worker threads
-threads = [] of CML::ThreadId
+threads = [] of CML::Thread::Id
 3.times do |i|
   tid = CML.spawn do
     puts "  Thread #{i}: Starting work"
@@ -73,10 +72,10 @@ puts "----------------------------------------"
 class WorkerPool
   def initialize(n_workers : Int32)
     @barrier = CML.counting_barrier(0)
-    @enrollments = [] of CML::Enrollment(Int32)
+    @enrollments = [] of CML::Barrier::Enrollment(Int32)
     n_workers.times { @enrollments << @barrier.enroll }
 
-    @workers = [] of CML::ThreadId
+    @workers = [] of CML::Thread::Id
     n_workers.times do |i|
       tid = CML.spawn do
         worker_id = i
