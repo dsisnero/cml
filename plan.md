@@ -20,7 +20,7 @@ It is meant to help LLMs (e.g. ChatGPT, Claude, Copilot) collaborate safely on a
   - `nack`
   - `timeout`
   - `always` / `never`
-- Verified specs (`spec/cml2_spec.cr`, `spec/smoke_test.cr`)
+- Verified specs (`spec/cml_spec.cr`, `spec/smoke_test.cr`)
 - Non-recursive, allocation-safe design (all classes, no structs)
 - Deterministic cancellation and fiber termination
 - Cross-fiber correctness confirmed by output trace

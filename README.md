@@ -141,6 +141,28 @@ evt = CML.spawn_evt { 123 }
 CML.sync(evt) # => 123
 ```
 
+### IO & Socket Helpers
+
+```crystal
+# Non-blocking reads/writes as events
+line = CML.sync(CML.read_line_evt(STDIN))
+CML.sync(CML.write_evt(STDOUT, "ok\n".to_slice))
+
+# Channel-backed streams (in-process piping)
+ch = CML.channel(String)
+reader = CML.open_chan_in(ch)
+writer = CML.open_chan_out(ch)
+CML.sync(CML.write_line_evt(writer, "hello"))
+puts CML.sync(CML.read_line_evt(reader)) # => "hello\n"
+
+# TCP/UDP helpers with cancellation support
+sock_evt = CML::Socket.connect_evt("example.com", 80)
+resp = CML.sync(CML.choose([
+  CML.wrap(sock_evt) { |sock| CML.sync(CML::Socket.send_evt(sock, "ping".to_slice)) },
+  CML.wrap(CML.timeout(100.milliseconds)) { :timeout },
+]))
+```
+
 ---
 
 ## 4. Core API
@@ -163,6 +185,13 @@ CML.sync(evt) # => 123
 - `CML::Chan(T).new` - Create a synchronous channel
 - `chan.send_evt(value)` - Send event
 - `chan.recv_evt` - Receive event
+
+### Optional helpers
+- `CML.after(span) { ... }`, `CML.spawn_evt { ... }`, `CML.sleep(span)`
+- IO helpers: `read_evt`, `read_line_evt`, `read_all_evt`, `write_evt`, `flush_evt`
+- Socket helpers: TCP `Socket.accept_evt`/`Socket.connect_evt`/`Socket.recv_evt`/`Socket.send_evt`, UDP `Socket::UDP.send_evt`/`Socket::UDP.recv_evt`
+- Channel-backed IO: `open_chan_in`, `open_chan_out`
+- Linda tuple-space example in `src/cml/linda/linda.cr`
 
 ---
 
@@ -203,6 +232,7 @@ end
 
 - [**Overview & Architecture**](docs/overview.md) - Deep dive into event semantics
 - [**API Reference**](docs/api.md) - Complete API documentation
+- [**CML Manual (Crystal)**](docs/cml_manual.md) - Detailed reference mirroring the SML/NJ CML docs
 - [**Examples**](examples/) - Working code examples
 - [**Cookbook**](docs/cookbook.md) - Common idioms and patterns
 
