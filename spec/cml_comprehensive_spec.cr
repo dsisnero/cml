@@ -186,7 +186,7 @@ module CML
 
         num_timeouts.times do |i|
           spawn do
-            evt = CML.timeout(0.01.seconds * (i + 1))
+            evt = CML.wrap(CML.timeout(0.01.seconds * (i + 1))){:timeout}
             result = CML.sync(evt)
             results.send(result)
           end
@@ -238,7 +238,7 @@ module CML
         # Create many timeouts in quick succession
         timeouts = Array(Event(Symbol)).new
         50.times do |i|
-          timeouts << CML.timeout(0.001.seconds * (i + 1))
+          timeouts << CML.wrap(CML.timeout(0.001.seconds * (i + 1))){:timeout}
         end
 
         # Sync on a choice that includes all timeouts
@@ -260,17 +260,22 @@ module CML
       end
 
       it "handles nack cleanup" do
-        cleanup_called = Atomic(Bool).new(false)
+        cleanup_called = false
         ch = Chan(Int32).new
 
-        nacked = CML.nack(ch.send_evt(42)) do
-          cleanup_called.set(true)
-        end
+        nacked_evt = CML.with_nack do |nack|
+          spawn do
+            CML.sync(nack)
+            cleanup_called = true
+          end
+          ch.send_evt(42)
+         end
+
 
         # Race the nacked send against a timeout
         choice = CML.choose([
-          CML.wrap(nacked) { |_| :nacked },
-          CML.timeout(0.5.seconds),
+          CML.wrap(nacked_evt) { |_| :nacked },
+          CML.wrap(CML.timeout(0.5.seconds)){:timeout}
         ])
 
         result = CML.sync(choice)
@@ -278,7 +283,7 @@ module CML
 
         # Give time for cleanup to run
         sleep 0.5.seconds
-        cleanup_called.get.should be_true
+        cleanup_called.should be_true
       end
 
       # TODO: Re-enable when Crystal compiler bug is fixed

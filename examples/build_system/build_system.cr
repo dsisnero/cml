@@ -12,6 +12,7 @@
 # - Messages carry timestamps or errors
 
 require "../../src/cml"
+require "../../src/cml/multicast"
 
 module BuildSystem
   # Stamp represents the result of checking/building an object
@@ -73,8 +74,8 @@ module BuildSystem
   # Create a thread for an internal node in the dependency graph.
   # Takes the target name, list of antecedent multicast ports, and the action.
   # Returns the multicast channel for sending status to successors.
-  def self.make_node(target : String, antecedents : Array(CML::MulticastPort(Stamp)), action : String) : CML::MulticastChan(Stamp)
-    status = CML::MulticastChan(Stamp).new
+  def self.make_node(target : String, antecedents : Array(CML::MCPort(Stamp)), action : String) : CML::MChan(Stamp)
+    status = CML.mchannel(Stamp)
 
     spawn(name: "node:#{target}") do
       loop do
@@ -101,26 +102,28 @@ module BuildSystem
           # Propagate error
           status.multicast(ERROR)
         when Time
+          # Helper to run action and notify result
+          do_action = -> {
+            if run_process(action)
+              status.multicast(get_mtime(target))
+            else
+              STDERR.puts "Error making \"#{target}\""
+              status.multicast(ERROR)
+            end
+          }
+
           # Check if we need to rebuild
           if obj_time = file_status(target)
-            needs_rebuild = if obj_time
-                              obj_time < max_stamp
-                            else
-                              true
-                            end
-
-            if needs_rebuild
-              # Run the action
-              if run_process(action)
-                status.multicast(get_mtime(target))
-              else
-                STDERR.puts "Error making \"#{target}\""
-                status.multicast(ERROR)
-              end
+            # File exists - check if it's older than antecedents
+            if obj_time < max_stamp
+              do_action.call
             else
-              # Object is up to date - obj_time is guaranteed non-nil here
+              # Object is up to date
               status.multicast(obj_time)
             end
+          else
+            # File doesn't exist - need to build it
+            do_action.call
           end
         end
       end
@@ -132,22 +135,25 @@ module BuildSystem
   # Create a thread for a leaf node in the dependency graph.
   # Takes the signal channel from controller, target name, and optional action.
   # Returns the multicast channel for sending status to successors.
-  def self.make_leaf(signal_ch : CML::MulticastPort(Nil), target : String, action : String?) : CML::MulticastChan(Stamp)
-    status = CML::MulticastChan(Stamp).new
+  def self.make_leaf(signal_ch : CML::MChan(Nil), target : String, action : String?)
+    # Each leaf gets its own port from the signal channel
+    start = signal_ch.port
+    status = CML.mchannel(Stamp)
+
+    # Create the doAction function based on whether there's an action
+    do_action = if act = action
+                  -> { run_process(act) }
+                else
+                  -> { true }
+                end
 
     spawn(name: "leaf:#{target}") do
       loop do
         # Wait for signal from controller
-        CML.sync(signal_ch.recv_evt)
+        CML.sync(start.recv_evt)
 
-        # Run action if present
-        success = if act = action
-                    run_process(act)
-                  else
-                    true
-                  end
-
-        if success
+        # Run action and notify
+        if do_action.call
           status.multicast(get_mtime(target))
         else
           STDERR.puts "Error making \"#{target}\""
@@ -161,11 +167,11 @@ module BuildSystem
 
   # Build the dependency graph from parsed makefile
   # Returns the multicast port for the root node
-  def self.make_graph(signal_ch : CML::MulticastChan(Nil), parsed : ParsedMakefile) : CML::MulticastPort(Stamp)
+  def self.make_graph(signal_ch : CML::MChan(Nil), parsed : ParsedMakefile) : CML::MCPort(Stamp)
     # Table mapping object names to their state/channels
     # nil = undefined leaf, NodeMark::UNDEF with Rule = undefined internal node
     # NodeMark::MARKED = being processed, MChan = defined
-    table = {} of String => {NodeMark, Rule?, CML::MulticastChan(Stamp)?}
+    table = {} of String => {NodeMark, Rule?, CML::MChan(Stamp)?}
 
     # Initialize table with all rules as undefined internal nodes
     parsed.rules.each do |rule|
@@ -190,39 +196,49 @@ module BuildSystem
 
   # Helper class for building the dependency graph
   class GraphBuilder
-    @signal_ch : CML::MulticastChan(Nil)
-    @table : Hash(String, {NodeMark, Rule?, CML::MulticastChan(Stamp)?})
+    @signal_ch : CML::MChan(Nil)
+    @table : Hash(String, {NodeMark, Rule?, CML::MChan(Stamp)?})
 
     def initialize(@signal_ch, @table)
     end
 
     # Add a leaf node (file without a rule)
-    def add_leaf(target : String) : CML::MulticastChan(Stamp)
-      ch = BuildSystem.make_leaf(@signal_ch.port, target, nil)
+    def add_leaf(target : String) : CML::MChan(Stamp)
+      ch = BuildSystem.make_leaf(@signal_ch, target, nil)
       @table[target] = {NodeMark::DEFINED, nil, ch}
       ch
     end
 
-    # Add an internal node
-    def add_nd(rule : Rule) : CML::MulticastChan(Stamp)
-      # Mark as being processed (cycle detection)
-      @table[rule.target] = {NodeMark::MARKED, rule, nil}
+    # Add a node from a rule
+    # If the rule has no antecedents, create a leaf node with the action
+    # Otherwise, create an internal node
+    def add_nd(rule : Rule) : CML::MChan(Stamp)
+      if rule.antecedents.empty?
+        # No antecedents - this is a leaf with an action
+        ch = BuildSystem.make_leaf(@signal_ch, rule.target, rule.action)
+        @table[rule.target] = {NodeMark::DEFINED, rule, ch}
+        ch
+      else
+        # Has antecedents - this is an internal node
+        # Mark as being processed (cycle detection)
+        @table[rule.target] = {NodeMark::MARKED, rule, nil}
 
-      # Process all antecedents first
-      antecedent_chans = rule.antecedents.map do |ant|
-        ch = ins_nd(ant)
-        raise "Failed to create channel for #{ant}" unless ch
-        ch.port
+        # Process all antecedents first
+        antecedent_chans = rule.antecedents.map do |ant|
+          ch = ins_nd(ant)
+          raise "Failed to create channel for #{ant}" unless ch
+          ch.port
+        end
+
+        # Create the node
+        ch = BuildSystem.make_node(rule.target, antecedent_chans, rule.action)
+        @table[rule.target] = {NodeMark::DEFINED, rule, ch}
+        ch
       end
-
-      # Create the node
-      ch = BuildSystem.make_node(rule.target, antecedent_chans, rule.action)
-      @table[rule.target] = {NodeMark::DEFINED, rule, ch}
-      ch
     end
 
     # Insert a node into the graph
-    def ins_nd(target : String) : CML::MulticastChan(Stamp)?
+    def ins_nd(target : String) : CML::MChan(Stamp)?
       entry = @table[target]?
 
       if entry.nil?
@@ -312,9 +328,9 @@ module BuildSystem
   # Main make function
   # Takes a makefile filename and returns a function for rebuilding the system
   def self.make(file : String) : Proc(Bool)
-    req_ch = CML::Chan(Nil).new
-    repl_ch = CML::Chan(Bool).new
-    signal_ch = CML::MulticastChan(Nil).new
+    req_ch = CML.channel(Nil)
+    repl_ch = CML.channel(Bool)
+    signal_ch = CML.mchannel(Nil)
 
     # Parse makefile and build graph
     content = File.read(file)
