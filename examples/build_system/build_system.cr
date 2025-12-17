@@ -74,7 +74,7 @@ module BuildSystem
   # Create a thread for an internal node in the dependency graph.
   # Takes the target name, list of antecedent multicast ports, and the action.
   # Returns the multicast channel for sending status to successors.
-  def self.make_node(target : String, antecedents : Array(CML::MCPort(Stamp)), action : String) : CML::MChan(Stamp)
+  def self.make_node(target : String, antecedents : Array(CML::Multicast::Port(Stamp)), action : String) : CML::Multicast::Chan(Stamp)
     status = CML.mchannel(Stamp)
 
     spawn(name: "node:#{target}") do
@@ -135,7 +135,7 @@ module BuildSystem
   # Create a thread for a leaf node in the dependency graph.
   # Takes the signal channel from controller, target name, and optional action.
   # Returns the multicast channel for sending status to successors.
-  def self.make_leaf(signal_ch : CML::MChan(Nil), target : String, action : String?)
+  def self.make_leaf(signal_ch : CML::Multicast::Chan(Nil), target : String, action : String?)
     # Each leaf gets its own port from the signal channel
     start = signal_ch.port
     status = CML.mchannel(Stamp)
@@ -167,11 +167,11 @@ module BuildSystem
 
   # Build the dependency graph from parsed makefile
   # Returns the multicast port for the root node
-  def self.make_graph(signal_ch : CML::MChan(Nil), parsed : ParsedMakefile) : CML::MCPort(Stamp)
+  def self.make_graph(signal_ch : CML::Multicast::Chan(Nil), parsed : ParsedMakefile) : CML::Multicast::Port(Stamp)
     # Table mapping object names to their state/channels
     # nil = undefined leaf, NodeMark::UNDEF with Rule = undefined internal node
     # NodeMark::MARKED = being processed, MChan = defined
-    table = {} of String => {NodeMark, Rule?, CML::MChan(Stamp)?}
+    table = {} of String => {NodeMark, Rule?, CML::Multicast::Chan(Stamp)?}
 
     # Initialize table with all rules as undefined internal nodes
     parsed.rules.each do |rule|
@@ -196,14 +196,14 @@ module BuildSystem
 
   # Helper class for building the dependency graph
   class GraphBuilder
-    @signal_ch : CML::MChan(Nil)
-    @table : Hash(String, {NodeMark, Rule?, CML::MChan(Stamp)?})
+    @signal_ch : CML::Multicast::Chan(Nil)
+    @table : Hash(String, {NodeMark, Rule?, CML::Multicast::Chan(Stamp)?})
 
     def initialize(@signal_ch, @table)
     end
 
     # Add a leaf node (file without a rule)
-    def add_leaf(target : String) : CML::MChan(Stamp)
+    def add_leaf(target : String) : CML::Multicast::Chan(Stamp)
       ch = BuildSystem.make_leaf(@signal_ch, target, nil)
       @table[target] = {NodeMark::DEFINED, nil, ch}
       ch
@@ -212,7 +212,7 @@ module BuildSystem
     # Add a node from a rule
     # If the rule has no antecedents, create a leaf node with the action
     # Otherwise, create an internal node
-    def add_nd(rule : Rule) : CML::MChan(Stamp)
+    def add_nd(rule : Rule) : CML::Multicast::Chan(Stamp)
       if rule.antecedents.empty?
         # No antecedents - this is a leaf with an action
         ch = BuildSystem.make_leaf(@signal_ch, rule.target, rule.action)
@@ -238,7 +238,7 @@ module BuildSystem
     end
 
     # Insert a node into the graph
-    def ins_nd(target : String) : CML::MChan(Stamp)?
+    def ins_nd(target : String) : CML::Multicast::Chan(Stamp)?
       entry = @table[target]?
 
       if entry.nil?
