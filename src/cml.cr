@@ -667,7 +667,10 @@ module CML
 
     protected def force_impl : EventGroup(T)
       # Force all child events and combine
-      forced = @events.map(&.force)
+      # Note: We need to cast each result to EventGroup(T) because when events
+      # are of different concrete types (e.g., RecvEvent from different channels),
+      # the map would return EventGroup(T)+ (union type)
+      forced = @events.map { |e| e.force.as(EventGroup(T)) }
 
       # Flatten nested groups
       result = Array(EventGroup(T)).new

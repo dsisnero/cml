@@ -177,6 +177,45 @@ describe CML do
       # Either result is valid depending on timing
       [0, 42].should contain(result)
     end
+
+    it "works with multiple recv_evts from different channels" do
+      # This tests the case where select is called with an array of recv_evts
+      # from different channels - this was causing a type error where
+      # EventGroup(T)+ was not matching BaseGroup(T)
+      done_ch = CML::Chan(Nil).new
+      shutdown_ch = CML::Chan(Nil).new
+
+      spawn do
+        sleep 10.milliseconds
+        done_ch.send(nil)
+      end
+
+      result = CML.select([done_ch.recv_evt, shutdown_ch.recv_evt])
+      result.should be_nil
+    end
+
+    it "works with select in a loop with multiple channels" do
+      # Simulates the batch execution pattern from the error report
+      done_ch = CML::Chan(Nil).new
+      shutdown_ch = CML::Chan(Nil).new
+      count = 0
+
+      3.times do
+        spawn do
+          sleep (10 * (count + 1)).milliseconds
+          done_ch.send(nil) rescue nil
+        end
+        count += 1
+      end
+
+      3.times do
+        CML.select([done_ch.recv_evt, shutdown_ch.recv_evt])
+        break if shutdown_ch.closed?
+      end
+
+      # If we got here without error, the test passed
+      true.should be_true
+    end
   end
 
   describe "timeout" do
