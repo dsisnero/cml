@@ -14,3 +14,7 @@
 /crystal/
 /hopac/
 .crystal_cache
+
+# beads issue tracking (commit only issues.jsonl)
+/.beads/*
+!/.beads/issues.jsonl
