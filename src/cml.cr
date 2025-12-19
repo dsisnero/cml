@@ -1007,7 +1007,6 @@ module CML
     raise "BUG: Never event should not resume"
   end
 
-
   # ===========================================================================
   # IVar - Write-Once Synchronization Variable (SML/NJ compatible)
   # ===========================================================================
@@ -1087,9 +1086,9 @@ module CML
 
   # Event that spawns a fiber when synchronized and returns its thread id.
   def self.spawn_evt(&block : -> Nil) : Event(Thread::Id)
-  guard do
-    AlwaysEvent(Thread::Id).new(spawn(&block))
-  end
+    guard do
+      AlwaysEvent(Thread::Id).new(spawn(&block))
+    end
   end
 
   # -----------------------
@@ -1290,9 +1289,9 @@ module CML
 
   # Event that spawns a fiber when synchronized and returns its thread id.
   def self.spawn_evt(&block : -> Nil) : Event(Thread::Id)
-  guard do
-    AlwaysEvent(Thread::Id).new(spawn(&block))
-  end
+    guard do
+      AlwaysEvent(Thread::Id).new(spawn(&block))
+    end
   end
 
   # -----------------------
@@ -1497,7 +1496,6 @@ module CML
   def self.new_thread_flag : Thread::Flag
     Thread::Flag.new
   end
-
 end
 
 # Optional helpers (split files to keep cml.cr smaller)
