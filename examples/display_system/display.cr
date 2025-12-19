@@ -953,7 +953,7 @@ class WinMap(T)
 end
 
 # Example usage
-if PROGRAM_NAME.includes?("display.cr")
+if PROGRAM_NAME.includes?("display") && !PROGRAM_NAME.includes?("terminal_display")
   puts "=== Crystal CML Window System Demo ==="
 
   # Create root environment using mock display
@@ -985,5 +985,6 @@ if PROGRAM_NAME.includes?("display.cr")
 
   # Send quit signal
   root_env.cmd_in.send(WSys::Cmd.new("Delete"))
-  sleep 0.1.seconds
+  sleep 0.5.seconds
+  exit(0)
 end
