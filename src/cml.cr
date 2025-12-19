@@ -299,7 +299,7 @@ module CML
     # Identity comparison
     # SML: val sameChannel : ('a chan * 'a chan) -> bool
     def same?(other : Chan(T)) : Bool
-      self.object_id == other.object_id
+      object_id == other.object_id
     end
 
     # Blocking send
@@ -556,34 +556,31 @@ module CML
     end
 
     def poll : EventStatus(T)
-      begin
-        case status = @inner.poll
-        when Enabled(T)
-          status
-        when Blocked(T)
-          inner_block = status.block_fn
-          Blocked(T).new do |tid, next_fn|
-            inner_block.call(tid, next_fn)
-          end
-        else
-          raise "BUG: Unexpected event status type"
+      case status = @inner.poll
+      when Enabled(T)
+        status
+      when Blocked(T)
+        inner_block = status.block_fn
+        Blocked(T).new do |tid, next_fn|
+          inner_block.call(tid, next_fn)
         end
-      rescue ex : Exception
-        Enabled(T).new(priority: -1, value: @handler.call(ex))
+      else
+        raise "BUG: Unexpected event status type"
       end
+    rescue ex : Exception
+      Enabled(T).new(priority: -1, value: @handler.call(ex))
     end
 
     protected def force_impl : EventGroup(T)
       # Wrap each base event in the inner group with exception handling
       # Also catch exceptions during force (e.g., from guard blocks)
-      begin
-        wrap_handler_group(@inner.force)
-      rescue ex : Exception
-        # Return a base group with a single "always enabled with handler result" event
-        BaseGroup(T).new(-> : EventStatus(T) {
-          Enabled(T).new(priority: -1, value: @handler.call(ex))
-        })
-      end
+
+      wrap_handler_group(@inner.force)
+    rescue ex : Exception
+      # Return a base group with a single "always enabled with handler result" event
+      BaseGroup(T).new(-> : EventStatus(T) {
+        Enabled(T).new(priority: -1, value: @handler.call(ex))
+      })
     end
 
     private def wrap_handler_group(group : EventGroup(T)) : EventGroup(T)
@@ -881,7 +878,7 @@ module CML
     tid = TransactionId.new
     tid.set_fiber(Fiber.current)
 
-    blocked.each do |bevt, status|
+    blocked.each do |_, status|
       status.block_fn.call(tid, -> { })
     end
 

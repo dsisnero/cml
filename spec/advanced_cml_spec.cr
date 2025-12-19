@@ -44,7 +44,7 @@ module CML
       it "runs cleanup even when wrapped and cancelled" do
         called = false
         ch = Chan(Int32).new
-        nack = CML.with_nack do |nack_evt|
+        nack = CML.with_nack do |_|
           called = true
           ch.recv_evt
         end

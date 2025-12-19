@@ -49,11 +49,9 @@ module RPC
 
   # Helper to safely put a value in an IVar (ignores if already set)
   private def self.safe_put(ivar : CML::IVar(T), value : T) forall T
-    begin
-      ivar.i_put(value)
-    rescue CML::PutError
-      # Already replied - ignore
-    end
+    ivar.i_put(value)
+  rescue CML::PutError
+    # Already replied - ignore
   end
 
   # Create a stateless RPC endpoint

@@ -590,7 +590,7 @@ describe CML do
         CML.always(0)
       end
 
-      wrapped = CML.wrap_handler(evt) do |ex|
+      wrapped = CML.wrap_handler(evt) do |_|
         -1
       end
 
@@ -633,8 +633,8 @@ describe CML do
   describe "ThreadId" do
     it "provides current thread ID" do
       tid = CML.get_tid
-    tid.should be_a(CML::Thread::Id)
-  end
+      tid.should be_a(CML::Thread::Id)
+    end
 
     it "returns same ID for same fiber" do
       tid1 = CML.get_tid

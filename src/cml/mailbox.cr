@@ -65,7 +65,7 @@ module CML
 
     # Identity comparison
     def same?(other : Mailbox(T)) : Bool
-      self.object_id == other.object_id
+      object_id == other.object_id
     end
 
     protected def make_recv_poll : Proc(EventStatus(T))

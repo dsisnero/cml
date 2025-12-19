@@ -134,8 +134,6 @@ module CML
           @value = nil
           @has_value = false
           val
-        else
-          nil
         end
       end
     end
@@ -175,7 +173,7 @@ module CML
     # Identity comparison
     # SML: val sameMVar : ('a mvar * 'a mvar) -> bool
     def same?(other : MVar(T)) : Bool
-      self.object_id == other.object_id
+      object_id == other.object_id
     end
 
     # Create poll function for take

@@ -79,7 +79,7 @@ module CML
     # Identity comparison
     # SML: val sameIVar : ('a ivar * 'a ivar) -> bool
     def same?(other : IVar(T)) : Bool
-      self.object_id == other.object_id
+      object_id == other.object_id
     end
 
     # Create poll function for get

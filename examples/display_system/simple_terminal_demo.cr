@@ -32,7 +32,7 @@ module SimpleTerminal
       x = pt1.x.to_f
       y = pt1.y.to_f
 
-      steps.times do |i|
+      steps.times do |_|
         px = x.to_i
         py = y.to_i
         if px >= 0 && px < @rect.wid && py >= 0 && py < @rect.ht
@@ -121,7 +121,7 @@ module SimpleTerminal
     end
 
     def same?(other : DpySystem::Bitmap) : Bool
-      self.object_id == other.object_id
+      object_id == other.object_id
     end
 
     def bitmap_rect : Geom::Rect
@@ -133,9 +133,9 @@ module SimpleTerminal
     end
 
     def render
-      print "\e[H"  # move cursor to home
+      print "\e[H" # move cursor to home
       @buffer.each_with_index do |row, y|
-        print "\e[#{y+1};1H\e[K"
+        print "\e[#{y + 1};1H\e[K"
         row.each do |ch|
           print ch
         end

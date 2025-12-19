@@ -24,7 +24,7 @@ describe "CML::Linda tuple space" do
     bindings1 = CML.sync(space.rd_evt(template))
     bindings2 = CML.sync(space.rd_evt(template))
 
-    bindings1.first.value.should eq(true)
-    bindings2.first.value.should eq(true)
+    bindings1.first.value.should be_true
+    bindings2.first.value.should be_true
   end
 end

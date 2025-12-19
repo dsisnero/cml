@@ -719,7 +719,7 @@ module WinManager
       }
 
       # Do menu function (simplified)
-      do_menu = ->(pos : Geom::Point) {
+      do_menu = ->(_pos : Geom::Point) {
         # Menu implementation omitted for brevity
         track_mouse.call
       }
@@ -769,8 +769,6 @@ module WinManager
     parent_env = w_map.parent.first
     if !w1.same?(parent_env) && w1.same?(w2)
       w1
-    else
-      nil
     end
   end
 
@@ -849,7 +847,7 @@ module Mock
     end
 
     def same?(other : DpySystem::Bitmap) : Bool
-      self.object_id == other.object_id
+      object_id == other.object_id
     end
 
     def bitmap_rect : Geom::Rect

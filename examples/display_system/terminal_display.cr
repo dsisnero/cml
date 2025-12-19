@@ -1,8 +1,6 @@
 require "../../src/cml"
 require "./display"
 
-
-
 # Terminal-based display system for visualizing the window system
 # This implements the DpySystem interface with terminal output
 
@@ -61,7 +59,7 @@ module TerminalDisplay
       x = pt1.x.to_f
       y = pt1.y.to_f
 
-      steps.times do |i|
+      steps.times do |_|
         px = x.to_i
         py = y.to_i
 
@@ -195,7 +193,7 @@ module TerminalDisplay
     end
 
     def same?(other : DpySystem::Bitmap) : Bool
-      self.object_id == other.object_id
+      object_id == other.object_id
     end
 
     def bitmap_rect : Geom::Rect
@@ -366,7 +364,7 @@ module TerminalDisplay
         @mouse_chan.send(DpySystem::MouseMsg.new(@mouse_btn, @mouse_pos))
       else
         @kbd_chan.send(DpySystem::KeyPress.new(ch))
-       end
+      end
     end
 
     def create_demo_window
@@ -547,12 +545,12 @@ if PROGRAM_NAME.includes?("terminal_display")
 
   # Create windows immediately (bypass menu system for demo)
   spawn do
-    sleep 0.1.seconds  # Let window manager initialize
+    sleep 0.1.seconds # Let window manager initialize
 
     # Create a simple window map to use create_child
     wmap = WinMap({name: String, frame: Frame::Frame?}).mk_win_map(root_env, {name: "root", frame: nil})
 
-    clients.each_with_index do |client, i|
+    clients.each_with_index do |client, _|
       sleep 0.2.seconds
       # puts "Creating window #{i+1}..."
 

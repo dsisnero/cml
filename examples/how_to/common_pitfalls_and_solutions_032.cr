@@ -28,7 +28,7 @@ end
 
 # Use in CML thread
 CML.spawn do
-  with_resource do |resource|
+  with_resource do |_|
     # Use resource
   end
 end

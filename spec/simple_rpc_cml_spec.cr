@@ -29,7 +29,7 @@ describe RPC do
     end
 
     it "works with complex types" do
-      rpc = RPC.mk_rpc(Array(Int32), Int32) { |arr| arr.sum }
+      rpc = RPC.mk_rpc(Array(Int32), Int32, &.sum)
 
       spawn { CML.sync(rpc.entry_evt) }
       spawn { CML.sync(rpc.entry_evt) }
