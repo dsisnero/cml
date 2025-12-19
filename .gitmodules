@@ -1,0 +1,3 @@
+[submodule "smlnj"]
+	path = smlnj
+	url = https://github.com/smlnj/smlnj.git
