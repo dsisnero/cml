@@ -598,6 +598,18 @@ describe CML do
       result.should eq(-1)
     end
 
+    it "catches exceptions from wrapped transforms" do
+      evt = CML.wrap(CML.always(10)) do |value|
+        raise "Transform error" if value > 0
+        value
+      end
+
+      wrapped = CML.wrap_handler(evt) { |_| 99 }
+
+      result = CML.sync(wrapped)
+      result.should eq(99)
+    end
+
     it "passes through normal values" do
       evt = CML.always(42)
       wrapped = CML.wrap_handler(evt) { |_| -1 }
