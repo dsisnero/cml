@@ -60,6 +60,19 @@ describe CML do
       order.should eq([1, 2, 3])
     end
 
+    it "supports nil payloads" do
+      ch = CML::Chan(Nil).new
+
+      spawn do
+        ch.send(nil)
+      end
+
+      value = ch.recv
+      Fiber.yield
+
+      value.should be_nil
+    end
+
     it "blocks receiver until sender is ready" do
       ch = CML::Chan(Int32).new
       order = [] of Int32
