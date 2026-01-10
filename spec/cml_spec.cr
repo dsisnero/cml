@@ -529,18 +529,19 @@ describe CML do
       cvar.set?.should be_true
     end
 
-    # This test is incomplete - skipping for now
-    pending "can wait for set" do
+    it "can wait for set" do
       cvar = CML::CVar.new
+      evt = CML::CVar::Event.new(cvar)
 
-      spawn do
-        sleep 10.milliseconds
-        cvar.set!
-      end
+      winner = CML.sync(CML.choose(
+        CML.wrap(CML.timeout(5.milliseconds)) { :timeout },
+        CML.wrap(evt) { :cvar }
+      ))
 
-      # Wait on the cvar using the poll mechanism
-      # This is a simplified test
-      sleep 20.milliseconds
+      winner.should eq(:timeout)
+      cvar.set!
+
+      CML.sync(evt).should be_nil
       cvar.set?.should be_true
     end
   end
