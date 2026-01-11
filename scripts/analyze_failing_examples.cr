@@ -54,6 +54,7 @@ class ExampleAnalyzer
         # Move to failing directory
         dest_file = File.join(@failing_dir, basename)
         File.rename(file, dest_file)
+        update_require_paths(dest_file)
 
         # Create issue file
         issue_file = File.join(@issues_dir, basename.gsub(/\.cr$/, ".md"))
@@ -75,6 +76,35 @@ class ExampleAnalyzer
     puts "Failing examples: #{failing.size}"
     puts "\nFailing examples moved to: #{@failing_dir}"
     puts "Issue reports in: #{@issues_dir}"
+  end
+
+  private def update_require_paths(file_path : String)
+    dir = File.dirname(file_path)
+    new_require = relative_path(dir, File.join(repo_root, "src", "cml"))
+    content = File.read(file_path)
+    updated = content.gsub(/require\s+"(\.\/|\.\.\/)+src\/cml"/, %(require "#{new_require}"))
+    return if updated == content
+
+    File.write(file_path, updated)
+  end
+
+  private def relative_path(from_dir : String, to_path : String) : String
+    from_parts = Path.new(File.expand_path(from_dir)).parts
+    to_parts = Path.new(File.expand_path(to_path)).parts
+
+    while !from_parts.empty? && !to_parts.empty? && from_parts.first == to_parts.first
+      from_parts.shift
+      to_parts.shift
+    end
+
+    rel_parts = Array(String).new
+    from_parts.size.times { rel_parts << ".." }
+    rel_parts.concat(to_parts)
+    rel_parts.join("/")
+  end
+
+  private def repo_root : String
+    File.expand_path("..", __DIR__)
   end
 
   private def compile_file(file : String) : Hash(String, Bool | String?)
