@@ -1,3 +1,6 @@
 [submodule "smlnj"]
 	path = smlnj
 	url = https://github.com/smlnj/smlnj.git
+[submodule "crystal"]
+	path = crystal
+	url = https://github.com/crystal-lang/crystal.git

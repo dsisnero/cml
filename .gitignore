@@ -11,7 +11,7 @@
 
 # Compiled executables
 /smlnj/
-/crystal/
+#/crystal/
 /hopac/
 .crystal_cache
 
