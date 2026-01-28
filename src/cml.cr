@@ -2,7 +2,6 @@
 
 require "./ext/io_wait_readable"
 require "./timer_wheel"
-require "./trace_macro"
 
 #
 # This implementation is more closely aligned with SML/NJ CML semantics
@@ -239,7 +238,7 @@ module CML
     def get : T
       @mtx.synchronize do
         raise "Slot has no value" unless @has_value
-        @value.as(T)
+        @value.not_nil!
       end
     end
 
@@ -1503,14 +1502,8 @@ require "./cml/mailbox"
 require "./cml/barrier"
 require "./cml/io"
 require "./cml/socket"
-require "./cml/socket_ctl"
-require "./cml/socket_wrapper"
 require "./cml/io_helpers"
-require "./cml/stream_io"
 require "./cml/process"
-require "./cml/simple_rpc"
 require "./cml/linda"
-require "./cml/distributed_linda"
 require "./cml/cvar"
 require "./cml/thread"
-require "./cml/multicast"

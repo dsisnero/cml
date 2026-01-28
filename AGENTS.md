@@ -54,7 +54,6 @@ When editing or generating code in this repository, AI assistants should:
 
 | File | Description |
 |------|--------------|
-
 ## | `src/cml.cr` | Core implementation of CML runtime (Events, Pick, Chan, DSL helpers). |
 
 ---
@@ -79,9 +78,7 @@ AI agents should:
 | `spec/cml2_spec.cr` | Basic behavior verification (choose, timeout, guard, nack). |
 | `spec/smoke_test.cr` | Minimal smoke test verifying choose/timeout correctness. |
 | `README.md` | Public overview of the CML runtime. |
-
 ## | `AGENTS.md` | This guidance document. |
-
 ---
 
 ## 5. Tracing and Instrumentation

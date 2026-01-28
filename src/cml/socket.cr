@@ -1,54 +1,8 @@
 require "socket"
 require "../ext/io_wait_readable"
-require "../cml"
 
 module CML
   module Socket
-    # Socket message flags matching SML/NJ CML_SOCKET signature.
-    # Values are platform-specific; these are common Linux/macOS values.
-    module Flags
-      NONE = 0
-      {% if flag?(:linux) || flag?(:darwin) %}
-        # Linux and macOS common values
-        MSG_OOB       =   0x01 # Process out-of-band data
-        MSG_PEEK      =   0x02 # Peek at incoming message
-        MSG_DONTROUTE =   0x04 # Don't use local routing
-        MSG_CTRUNC    =   0x08 # Control data lost before delivery
-        MSG_PROXY     =   0x10 # Supply or ask second address
-        MSG_TRUNC     =   0x20 # Data discarded before delivery
-        MSG_DONTWAIT  =   0x40 # Non-blocking IO
-        MSG_EOR       =   0x80 # End of record
-        MSG_WAITALL   =  0x100 # Wait for full request or error
-        MSG_FIN       =  0x200 # TCP FIN
-        MSG_SYN       =  0x400 # TCP SYN
-        MSG_CONFIRM   =  0x800 # Confirm path validity
-        MSG_RST       = 0x1000 # TCP RST
-        MSG_ERRQUEUE  = 0x2000 # Fetch message from error queue
-        MSG_NOSIGNAL  = 0x4000 # Do not generate SIGPIPE
-        MSG_MORE      = 0x8000 # Sender will send more
-      {% elsif flag?(:windows) %}
-        # Windows values (from winsock2.h)
-        MSG_OOB       =  0x01 # Process out-of-band data
-        MSG_PEEK      =  0x02 # Peek at incoming message
-        MSG_DONTROUTE =  0x04 # Don't use local routing
-        MSG_WAITALL   =  0x08 # Wait for full request or error
-        MSG_PARTIAL   =  0x10 # Partial send or receive
-        MSG_INTERRUPT =  0x20 # Interrupt system call (WinSock 1)
-        MSG_MAXIOVLEN =  0x40 # Maximum I/O vector length
-        MSG_CTRUNC    =  0x80 # Control data truncated
-        MSG_BCAST     = 0x100 # Broadcast (not standard)
-        MSG_MCAST     = 0x200 # Multicast (not standard)
-      {% else %}
-        # Fallback values (POSIX defaults)
-        MSG_OOB       =   0x01
-        MSG_PEEK      =   0x02
-        MSG_DONTROUTE =   0x04
-        MSG_WAITALL   =  0x100
-        MSG_DONTWAIT  =   0x40
-        MSG_NOSIGNAL  = 0x4000
-      {% end %}
-    end
-
     # TCP accept
     class AcceptEvent < Event(::TCPSocket)
       @server : ::TCPServer
@@ -119,9 +73,6 @@ module CML
         return false if @cancel_flag.get
         begin
           io.wait_readable(50.milliseconds, raise_if_closed: false)
-          true
-        rescue ex : IO::TimeoutError
-          false
         rescue
           true
         end
@@ -228,7 +179,6 @@ module CML
     class RecvEvent < Event(Bytes)
       @socket : ::Socket
       @length : Int32
-      @flags : Int32
       @nack_evt : Event(Nil)?
       @ready = AtomicFlag.new
       @cancel_flag = AtomicFlag.new
@@ -236,7 +186,7 @@ module CML
       @started = false
       @start_mtx = Mutex.new
 
-      def initialize(@socket, @length, @flags = 0, @nack_evt = nil)
+      def initialize(@socket, @length, @nack_evt = nil)
       end
 
       def poll : EventStatus(Bytes)
@@ -271,25 +221,7 @@ module CML
             while wait_until_readable(@socket)
               break if @cancel_flag.get
               buffer = Bytes.new(@length)
-              read_bytes = if @flags == 0
-                             @socket.read(buffer)
-                           else
-                             # Use low-level recv with flags
-                             loop do
-                               bytes = LibC.recv(@socket.fd, buffer, @length, @flags)
-                               if bytes < 0
-                                 errno = Errno.value
-                                 if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK
-                                   # Not ready yet, wait a bit and retry
-                                   @socket.wait_readable(1.millisecond, raise_if_closed: false)
-                                   next
-                                 else
-                                   raise IO::Error.from_os_error("recv", errno)
-                                 end
-                               end
-                               break bytes.to_i32
-                             end
-                           end
+              read_bytes = @socket.read(buffer)
               deliver(buffer[0, read_bytes], tid)
               break
             end
@@ -305,9 +237,6 @@ module CML
         return false if @cancel_flag.get
         begin
           io.wait_readable(50.milliseconds, raise_if_closed: false)
-          true
-        rescue ex : IO::TimeoutError
-          false
         rescue
           true
         end
@@ -344,7 +273,6 @@ module CML
     class SendEvent < Event(Int32)
       @socket : ::Socket
       @data : Bytes
-      @flags : Int32
       @nack_evt : Event(Nil)?
       @ready = AtomicFlag.new
       @cancel_flag = AtomicFlag.new
@@ -352,9 +280,8 @@ module CML
       @started = false
       @start_mtx = Mutex.new
 
-      def initialize(@socket, data : Bytes, flags : Int32 = 0, @nack_evt = nil)
+      def initialize(@socket, data : Bytes, @nack_evt = nil)
         @data = data.dup
-        @flags = flags
       end
 
       def poll : EventStatus(Int32)
@@ -390,19 +317,8 @@ module CML
             while wait_until_writable(@socket) && bytes_written < @data.size
               break if @cancel_flag.get
               slice = @data[bytes_written..]
-              bytes_sent = if @flags == 0
-                             @socket.write(slice)
-                             slice.size
-                           else
-                             # Use low-level send with flags
-                             bytes = LibC.send(@socket.fd, slice, slice.size, @flags)
-                             if bytes < 0
-                               errno = Errno.value
-                               raise IO::Error.from_os_error("send", errno)
-                             end
-                             bytes.to_i32
-                           end
-              bytes_written += bytes_sent
+              @socket.write(slice)
+              bytes_written += slice.size
             end
             deliver(bytes_written, tid)
           rescue ex : Exception
@@ -417,9 +333,6 @@ module CML
         return false if @cancel_flag.get
         begin
           io.wait_writable(50.milliseconds)
-          true
-        rescue ex : IO::TimeoutError
-          false
         rescue
           true
         end
@@ -458,7 +371,6 @@ module CML
         @data : Bytes
         @host : String?
         @port : Int32?
-        @flags : Int32
         @nack_evt : Event(Nil)?
         @ready = AtomicFlag.new
         @cancel_flag = AtomicFlag.new
@@ -466,9 +378,8 @@ module CML
         @started = false
         @start_mtx = Mutex.new
 
-        def initialize(@socket, data : Bytes, @host = nil, @port = nil, flags : Int32 = 0, @nack_evt = nil)
+        def initialize(@socket, data : Bytes, @host = nil, @port = nil, @nack_evt = nil)
           @data = data.dup
-          @flags = flags
         end
 
         def poll : EventStatus(Int32)
@@ -500,28 +411,11 @@ module CML
 
           ::spawn do
             begin
-              bytes_sent = if @flags == 0
-                             if @host && @port
-                               addr = ::Socket::IPAddress.new(@host.not_nil!, @port.not_nil!)
-                               @socket.send(@data, addr)
-                             else
-                               @socket.send(@data)
-                             end
+              bytes_sent = if @host && @port
+                             addr = ::Socket::IPAddress.new(@host.not_nil!, @port.not_nil!)
+                             @socket.send(@data, addr)
                            else
-                             # Use low-level sendto with flags
-                             if @host && @port
-                               addr = ::Socket::IPAddress.new(@host.not_nil!, @port.not_nil!)
-                               sockaddr = addr.to_unsafe
-                               bytes = LibC.sendto(@socket.fd, @data, @data.size, @flags, sockaddr, addr.size.to_u32)
-                             else
-                               # connected socket
-                               bytes = LibC.send(@socket.fd, @data, @data.size, @flags)
-                             end
-                             if bytes < 0
-                               errno = Errno.value
-                               raise IO::Error.from_os_error("send", errno)
-                             end
-                             bytes.to_i32
+                             @socket.send(@data)
                            end
               deliver(bytes_sent, tid)
             rescue ex : Exception
@@ -562,7 +456,6 @@ module CML
       class RecvEvent < Event({Bytes, ::Socket::IPAddress})
         @socket : ::UDPSocket
         @max : Int32
-        @flags : Int32
         @nack_evt : Event(Nil)?
         @ready = AtomicFlag.new
         @cancel_flag = AtomicFlag.new
@@ -570,8 +463,7 @@ module CML
         @started = false
         @start_mtx = Mutex.new
 
-        def initialize(@socket, @max, flags : Int32 = 0, @nack_evt = nil)
-          @flags = flags
+        def initialize(@socket, @max, @nack_evt = nil)
         end
 
         def poll : EventStatus({Bytes, ::Socket::IPAddress})
@@ -622,9 +514,6 @@ module CML
           return false if @cancel_flag.get
           begin
             io.wait_readable(50.milliseconds, raise_if_closed: false)
-            true
-          rescue ex : IO::TimeoutError
-            false
           rescue
             true
           end
@@ -657,24 +546,16 @@ module CML
         end
       end
 
-      def self.send_evt(socket : ::UDPSocket, data : Bytes, host : String? = nil, port : Int32? = nil, flags : Int32 = 0) : Event(Int32)
+      def self.send_evt(socket : ::UDPSocket, data : Bytes, host : String? = nil, port : Int32? = nil) : Event(Int32)
         CML.with_nack do |nack|
-          SendEvent.new(socket, data, host, port, flags, nack)
+          SendEvent.new(socket, data, host, port, nack)
         end
       end
 
-      def self.recv_evt(socket : ::UDPSocket, max : Int32, flags : Int32 = 0) : Event({Bytes, ::Socket::IPAddress})
+      def self.recv_evt(socket : ::UDPSocket, max : Int32) : Event({Bytes, ::Socket::IPAddress})
         CML.with_nack do |nack|
-          RecvEvent.new(socket, max, flags, nack)
+          RecvEvent.new(socket, max, nack)
         end
-      end
-
-      def self.send_evt(socket : Socket::DatagramSocket, data : Bytes, host : String? = nil, port : Int32? = nil, flags : Int32 = 0) : Event(Int32)
-        send_evt(socket.inner, data, host, port, flags)
-      end
-
-      def self.recv_evt(socket : Socket::DatagramSocket, max : Int32, flags : Int32 = 0) : Event({Bytes, ::Socket::IPAddress})
-        recv_evt(socket.inner, max, flags)
       end
     end
 
@@ -682,28 +563,16 @@ module CML
       CML.with_nack { |nack| AcceptEvent.new(server, nack) }
     end
 
-    def self.accept_evt(server : Socket::PassiveSocket) : Event(::TCPSocket)
-      accept_evt(server.inner)
-    end
-
     def self.connect_evt(host : String, port : Int32) : Event(::TCPSocket)
       CML.with_nack { |nack| ConnectEvent.new(host, port, nack) }
     end
 
-    def self.recv_evt(socket : ::Socket, length : Int32, flags : Int32 = 0) : Event(Bytes)
-      CML.with_nack { |nack| RecvEvent.new(socket, length, flags, nack) }
+    def self.recv_evt(socket : ::Socket, length : Int32) : Event(Bytes)
+      CML.with_nack { |nack| RecvEvent.new(socket, length, nack) }
     end
 
-    def self.send_evt(socket : ::Socket, data : Bytes, flags : Int32 = 0) : Event(Int32)
-      CML.with_nack { |nack| SendEvent.new(socket, data, flags, nack) }
-    end
-
-    def self.recv_evt(socket : Socket::StreamSocket, length : Int32, flags : Int32 = 0) : Event(Bytes)
-      recv_evt(socket.inner, length, flags)
-    end
-
-    def self.send_evt(socket : Socket::StreamSocket, data : Bytes, flags : Int32 = 0) : Event(Int32)
-      send_evt(socket.inner, data, flags)
+    def self.send_evt(socket : ::Socket, data : Bytes) : Event(Int32)
+      CML.with_nack { |nack| SendEvent.new(socket, data, nack) }
     end
   end
 end

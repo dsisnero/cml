@@ -19,7 +19,6 @@ CML::Tracer.set_filter_tags(["chan", "pick"])
 ```
 
 See `src/trace_macro.cr` for details.
-
 # Crystal Concurrent ML (CML)
 
 A minimal, composable, and correct **Concurrent ML runtime for Crystal** —
@@ -39,7 +38,6 @@ This library provides a small but complete CML implementation in pure Crystal.
 It adds a higher-level event layer on top of Crystal's built-in channels and fibers.
 
 **Core features:**
-
 - `Event(T)` abstraction for synchronization
 - Atomic commit cell (`Pick`) ensuring only one event in a choice succeeds
 - `Chan(T)` supporting synchronous rendezvous communication
@@ -48,7 +46,6 @@ It adds a higher-level event layer on top of Crystal's built-in channels and fib
 - Fiber-safe cancellation and cleanup
 
 **Design principles:**
-
 - **One pick, one commit**: Exactly one event in a choice succeeds
 - **Zero blocking in registration**: `try_register` never blocks
 - **Deterministic behavior**: Predictable regardless of scheduling
@@ -67,7 +64,6 @@ dependencies:
 ```
 
 Then run:
-
 ```bash
 shards install
 ```
@@ -172,7 +168,6 @@ resp = CML.sync(CML.choose([
 ## 4. Core API
 
 ### Events
-
 - `CML.sync(evt)` - Synchronize on an event
 - `CML.always(value)` - Event that always succeeds
 - `CML.never` - Event that never succeeds
@@ -181,20 +176,17 @@ resp = CML.sync(CML.choose([
 - `CML.spawn_evt { ... }` - Run a block in a fiber, return result as event (helper)
 
 ### Combinators
-
 - `CML.choose(events)` - Race multiple events
 - `CML.wrap(evt, &block)` - Transform event result
 - `CML.guard(&block)` - Lazy event construction
 - `CML.nack(evt, &block)` - Cancellation cleanup
 
 ### Channels
-
 - `CML::Chan(T).new` - Create a synchronous channel
 - `chan.send_evt(value)` - Send event
 - `chan.recv_evt` - Receive event
 
 ### Optional helpers
-
 - `CML.after(span) { ... }`, `CML.spawn_evt { ... }`, `CML.sleep(span)`
 - IO helpers: `read_evt`, `read_line_evt`, `read_all_evt`, `write_evt`, `flush_evt`
 - Socket helpers: TCP `Socket.accept_evt`/`Socket.connect_evt`/`Socket.recv_evt`/`Socket.send_evt`, UDP `Socket::UDP.send_evt`/`Socket::UDP.recv_evt`
@@ -206,7 +198,6 @@ resp = CML.sync(CML.choose([
 ## 5. Advanced Usage
 
 ### Nested Choices
-
 ```crystal
 inner = CML.choose([evt1, evt2])
 outer = CML.choose([inner, evt3])
@@ -214,7 +205,6 @@ result = CML.sync(outer)
 ```
 
 ### Multiple Concurrent Channels
-
 ```crystal
 ch1 = CML::Chan(Int32).new
 ch2 = CML::Chan(String).new
@@ -226,7 +216,6 @@ evt = CML.choose([
 ```
 
 ### Re-entrant Guards
-
 ```crystal
 evt = CML.guard do
   if some_condition
@@ -246,7 +235,6 @@ end
 - [**CML Manual (Crystal)**](docs/cml_manual.md) - Detailed reference mirroring the SML/NJ CML docs
 - [**Examples**](examples/) - Working code examples
 - [**Cookbook**](docs/cookbook.md) - Common idioms and patterns
-- [**Common Gotchas**](docs/cml_gotchas.md) - Type mismatches and other pitfalls, especially with `choose`
 
 ---
 
