@@ -1,5 +1,6 @@
 require "socket"
 require "../ext/io_wait_readable"
+require "./prim_io"
 require "../cml"
 
 module CML
@@ -57,7 +58,7 @@ module CML
       @cancel_flag = AtomicFlag.new
       @result = Slot(Exception | ::TCPSocket).new
       @started = false
-      @start_mtx = Mutex.new
+      @start_mtx = CML::Sync::Mutex.new
 
       def initialize(@server, @nack_evt = nil)
       end
@@ -118,12 +119,11 @@ module CML
       private def wait_until_readable(io : ::IO) : Bool
         return false if @cancel_flag.get
         begin
-          io.wait_readable(50.milliseconds, raise_if_closed: false)
+          CML.sync(CML::PrimitiveIO.wait_readable_evt(io, @nack_evt))
           true
-        rescue ex : IO::TimeoutError
+        rescue ex : Exception
+          # IO closed or nack triggered
           false
-        rescue
-          true
         end
       end
 
@@ -153,7 +153,7 @@ module CML
       @cancel_flag = AtomicFlag.new
       @result = Slot(Exception | ::TCPSocket).new
       @started = false
-      @start_mtx = Mutex.new
+      @start_mtx = CML::Sync::Mutex.new
 
       def initialize(@host, @port, @nack_evt = nil)
       end
@@ -221,10 +221,183 @@ module CML
         else
           val
         end
+    end
+  end
+
+  # Unix domain socket accept
+  class UnixAcceptEvent < Event(::UNIXSocket)
+    @server : ::UNIXServer
+    @nack_evt : Event(Nil)?
+    @ready = AtomicFlag.new
+    @cancel_flag = AtomicFlag.new
+    @result = Slot(Exception | ::UNIXSocket).new
+    @started = false
+    @start_mtx = CML::Sync::Mutex.new
+
+    def initialize(@server, @nack_evt = nil)
+    end
+
+    def poll : EventStatus(::UNIXSocket)
+      if @ready.get
+        return Enabled(::UNIXSocket).new(priority: 0, value: fetch_result)
+      end
+
+      Blocked(::UNIXSocket).new do |tid, next_fn|
+        start_once(tid)
+        next_fn.call
       end
     end
 
-    # Receive bytes from a socket using readiness polling.
+    protected def force_impl : EventGroup(::UNIXSocket)
+      BaseGroup(::UNIXSocket).new(-> : EventStatus(::UNIXSocket) { poll })
+    end
+
+    private def start_once(tid : TransactionId)
+      should_start = false
+
+      @start_mtx.synchronize do
+        unless @started
+          @started = true
+          should_start = true
+        end
+      end
+
+      return unless should_start
+
+      ::spawn do
+        begin
+          while wait_until_readable(@server)
+            break if @cancel_flag.get
+            socket = @server.accept
+            deliver(socket, tid)
+            break
+          end
+        rescue ex : Exception
+          deliver(ex, tid)
+        end
+      end
+
+      start_nack_watcher(tid)
+    end
+
+    private def start_nack_watcher(tid : TransactionId)
+      if nack = @nack_evt
+        ::spawn do
+          CML.sync(nack)
+          @cancel_flag.set(true)
+          tid.try_cancel
+        end
+      end
+    end
+
+      private def wait_until_readable(io : ::IO) : Bool
+        return false if @cancel_flag.get
+        begin
+          CML.sync(CML::PrimitiveIO.wait_readable_evt(io, @nack_evt))
+          true
+        rescue ex : Exception
+          # IO closed or nack triggered
+          false
+        end
+      end
+
+    private def deliver(value : Exception | ::UNIXSocket, tid : TransactionId)
+      return if @cancel_flag.get
+      @result.set(value)
+      @ready.set(true)
+      tid.try_commit_and_resume
+    end
+
+    private def fetch_result : ::UNIXSocket
+      case val = @result.get
+      when Exception
+        raise val
+      else
+        val
+      end
+    end
+  end
+
+  # Unix domain socket connect
+  class UnixConnectEvent < Event(::UNIXSocket)
+    @path : String
+    @nack_evt : Event(Nil)?
+    @ready = AtomicFlag.new
+    @cancel_flag = AtomicFlag.new
+    @result = Slot(Exception | ::UNIXSocket).new
+    @started = false
+    @start_mtx = CML::Sync::Mutex.new
+
+    def initialize(@path, @nack_evt = nil)
+    end
+
+    def poll : EventStatus(::UNIXSocket)
+      if @ready.get
+        return Enabled(::UNIXSocket).new(priority: 0, value: fetch_result)
+      end
+
+      Blocked(::UNIXSocket).new do |tid, next_fn|
+        start_once(tid)
+        next_fn.call
+      end
+    end
+
+    protected def force_impl : EventGroup(::UNIXSocket)
+      BaseGroup(::UNIXSocket).new(-> : EventStatus(::UNIXSocket) { poll })
+    end
+
+    private def start_once(tid : TransactionId)
+      should_start = false
+
+      @start_mtx.synchronize do
+        unless @started
+          @started = true
+          should_start = true
+        end
+      end
+
+      return unless should_start
+
+      ::spawn do
+        begin
+          socket = ::UNIXSocket.new(@path)
+          deliver(socket, tid)
+        rescue ex : Exception
+          deliver(ex, tid)
+        end
+      end
+
+      start_nack_watcher(tid)
+    end
+
+    private def start_nack_watcher(tid : TransactionId)
+      if nack = @nack_evt
+        ::spawn do
+          CML.sync(nack)
+          @cancel_flag.set(true)
+          tid.try_cancel
+        end
+      end
+    end
+
+    private def deliver(value : Exception | ::UNIXSocket, tid : TransactionId)
+      return if @cancel_flag.get
+      @result.set(value)
+      @ready.set(true)
+      tid.try_commit_and_resume
+    end
+
+    private def fetch_result : ::UNIXSocket
+      case val = @result.get
+      when Exception
+        raise val
+      else
+        val
+      end
+    end
+  end
+
+  # Receive bytes from a socket using readiness polling.
     class RecvEvent < Event(Bytes)
       @socket : ::Socket
       @length : Int32
@@ -234,7 +407,7 @@ module CML
       @cancel_flag = AtomicFlag.new
       @result = Slot(Exception | Bytes).new
       @started = false
-      @start_mtx = Mutex.new
+      @start_mtx = CML::Sync::Mutex.new
 
       def initialize(@socket, @length, @flags = 0, @nack_evt = nil)
       end
@@ -268,6 +441,7 @@ module CML
 
         ::spawn do
           begin
+            CML.trace "RecvEvent.start_once loop", @socket, tag: "socket"
             while wait_until_readable(@socket)
               break if @cancel_flag.get
               buffer = Bytes.new(@length)
@@ -280,8 +454,9 @@ module CML
                                if bytes < 0
                                  errno = Errno.value
                                  if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK
-                                   # Not ready yet, wait a bit and retry
-                                   @socket.wait_readable(1.millisecond, raise_if_closed: false)
+                                    # Not ready yet, wait a bit and retry
+                                    CML.trace "RecvEvent.inner wait", @socket, tag: "socket"
+                                    CML.sync(CML::PrimitiveIO.wait_readable_evt(@socket, @nack_evt))
                                    next
                                  else
                                    raise IO::Error.from_os_error("recv", errno)
@@ -350,7 +525,7 @@ module CML
       @cancel_flag = AtomicFlag.new
       @result = Slot(Exception | Int32).new
       @started = false
-      @start_mtx = Mutex.new
+      @start_mtx = CML::Sync::Mutex.new
 
       def initialize(@socket, data : Bytes, flags : Int32 = 0, @nack_evt = nil)
         @data = data.dup
@@ -464,7 +639,7 @@ module CML
         @cancel_flag = AtomicFlag.new
         @result = Slot(Exception | Int32).new
         @started = false
-        @start_mtx = Mutex.new
+        @start_mtx = CML::Sync::Mutex.new
 
         def initialize(@socket, data : Bytes, @host = nil, @port = nil, flags : Int32 = 0, @nack_evt = nil)
           @data = data.dup
@@ -568,7 +743,7 @@ module CML
         @cancel_flag = AtomicFlag.new
         @result = Slot(Exception | {Bytes, ::Socket::IPAddress}).new
         @started = false
-        @start_mtx = Mutex.new
+        @start_mtx = CML::Sync::Mutex.new
 
         def initialize(@socket, @max, flags : Int32 = 0, @nack_evt = nil)
           @flags = flags
@@ -618,17 +793,16 @@ module CML
           start_nack_watcher(tid)
         end
 
-        private def wait_until_readable(io : ::IO) : Bool
-          return false if @cancel_flag.get
-          begin
-            io.wait_readable(50.milliseconds, raise_if_closed: false)
-            true
-          rescue ex : IO::TimeoutError
-            false
-          rescue
-            true
-          end
+      private def wait_until_readable(io : ::IO) : Bool
+        return false if @cancel_flag.get
+        begin
+          CML.sync(CML::PrimitiveIO.wait_readable_evt(io, @nack_evt))
+          true
+        rescue ex : Exception
+          # If wait_readable_evt raises (e.g., IO closed), return true to let the loop handle it
+          true
         end
+      end
 
         private def start_nack_watcher(tid : TransactionId)
           if nack = @nack_evt
@@ -690,6 +864,18 @@ module CML
       CML.with_nack { |nack| ConnectEvent.new(host, port, nack) }
     end
 
+    def self.accept_evt(server : ::UNIXServer) : Event(::UNIXSocket)
+      CML.with_nack { |nack| UnixAcceptEvent.new(server, nack) }
+    end
+
+    def self.accept_evt(server : Socket::UnixPassiveSocket) : Event(::UNIXSocket)
+      accept_evt(server.inner)
+    end
+
+    def self.unix_connect_evt(path : String) : Event(::UNIXSocket)
+      CML.with_nack { |nack| UnixConnectEvent.new(path, nack) }
+    end
+
     def self.recv_evt(socket : ::Socket, length : Int32, flags : Int32 = 0) : Event(Bytes)
       CML.with_nack { |nack| RecvEvent.new(socket, length, flags, nack) }
     end
@@ -703,6 +889,22 @@ module CML
     end
 
     def self.send_evt(socket : Socket::StreamSocket, data : Bytes, flags : Int32 = 0) : Event(Int32)
+      send_evt(socket.inner, data, flags)
+    end
+
+    def self.recv_evt(socket : Socket::UnixStreamSocket, length : Int32, flags : Int32 = 0) : Event(Bytes)
+      recv_evt(socket.inner, length, flags)
+    end
+
+    def self.send_evt(socket : Socket::UnixStreamSocket, data : Bytes, flags : Int32 = 0) : Event(Int32)
+      send_evt(socket.inner, data, flags)
+    end
+
+    def self.recv_evt(socket : Socket::UnixDatagramSocket, length : Int32, flags : Int32 = 0) : Event(Bytes)
+      recv_evt(socket.inner, length, flags)
+    end
+
+    def self.send_evt(socket : Socket::UnixDatagramSocket, data : Bytes, flags : Int32 = 0) : Event(Int32)
       send_evt(socket.inner, data, flags)
     end
   end

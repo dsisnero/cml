@@ -98,24 +98,32 @@ module CML
 
     # Wrapper for Unix stream sockets.
     class UnixStreamSocket < SocketWrapper
-      @inner : ::UNIXSocket
+      @inner : ::Socket
 
-      def initialize(@inner : ::UNIXSocket)
+      def initialize(inner : ::Socket)
+        unless inner.family.unix?
+          raise ArgumentError.new("UnixStreamSocket requires UNIX family socket")
+        end
+        @inner = inner
       end
 
-      def inner : ::UNIXSocket
+      def inner : ::Socket
         @inner
       end
     end
 
     # Wrapper for Unix datagram sockets.
     class UnixDatagramSocket < SocketWrapper
-      @inner : ::UNIXSocket
+      @inner : ::Socket
 
-      def initialize(@inner : ::UNIXSocket)
+      def initialize(inner : ::Socket)
+        unless inner.family.unix?
+          raise ArgumentError.new("UnixDatagramSocket requires UNIX family socket")
+        end
+        @inner = inner
       end
 
-      def inner : ::UNIXSocket
+      def inner : ::Socket
         @inner
       end
     end
@@ -220,18 +228,13 @@ module CML
         when {::Socket::Family::UNIX, ::Socket::Type::STREAM}
           if raw.is_a?(::UNIXServer)
             UnixPassiveSocket.new(raw.as(::UNIXServer))
-          elsif raw.is_a?(::UNIXSocket)
-            UnixStreamSocket.new(raw.as(::UNIXSocket))
           else
-            # Generic socket, fallback to generic wrapper
-            GenericSocketWrapper.new(raw)
+            # Any Socket with UNIX family and STREAM type
+            UnixStreamSocket.new(raw)
           end
         when {::Socket::Family::UNIX, ::Socket::Type::DGRAM}
-          if raw.is_a?(::UNIXSocket)
-            UnixDatagramSocket.new(raw.as(::UNIXSocket))
-          else
-            GenericSocketWrapper.new(raw)
-          end
+          # Any Socket with UNIX family and DGRAM type
+          UnixDatagramSocket.new(raw)
         else
           # Fallback to generic wrapper
           GenericSocketWrapper.new(raw)
@@ -365,13 +368,13 @@ module CML
 
       # Convenience factory for Unix stream socket.
       def unix_stream : UnixStreamSocket
-        raw = ::UNIXSocket.new
+        raw = ::Socket.new(::Socket::Family::UNIX, ::Socket::Type::STREAM)
         UnixStreamSocket.new(raw)
       end
 
       # Convenience factory for Unix datagram socket.
       def unix_dgram : UnixDatagramSocket
-        raw = ::UNIXSocket.new(::Socket::Type::DGRAM)
+        raw = ::Socket.new(::Socket::Family::UNIX, ::Socket::Type::DGRAM)
         UnixDatagramSocket.new(raw)
       end
 

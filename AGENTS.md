@@ -304,6 +304,30 @@ history/
 Run `bd <command> --help` to see all available flags for any command.
 For example: `bd create --help` shows `--parent`, `--deps`, `--assignee`, etc.
 
+## 7. Concurrent IO Limitations
+
+**IMPORTANT**: Crystal's standard `IO` objects are **not thread-safe** for concurrent access from multiple threads.
+
+### Current Status
+- **Thread-safe CML operations**: All CML event state, atomic flags, and synchronization primitives are thread-safe
+- **IO object limitation**: Crystal's `IO` class instances cannot be safely accessed concurrently from multiple threads
+- **Stress tests disabled**: Thread safety stress tests are disabled in `spec/eventloop_compat_spec.cr:190-303` (wrapped in `{% if false %}`)
+
+### Workarounds
+1. **Single-threaded IO access**: Only access each `IO` object from one thread
+2. **Channel-based serialization**: Use `Chan` to serialize IO operations to a dedicated fiber
+3. **Documentation**: Always document this limitation when discussing Parallel contexts
+
+### Future Considerations
+- A `ThreadSafeIO` wrapper could be implemented with per-IO mutex synchronization
+- Crystal's execution context system may evolve to address this limitation
+
+### AI Agent Requirements
+- **Never assume IO thread-safety**: Even with thread-safe CML primitives, underlying IO is not safe
+- **Document the limitation**: Add warnings when showing examples with Parallel contexts
+- **Keep tests disabled**: Thread safety stress tests should remain disabled until solution is implemented
+- **Recommend serialization patterns**: Show channel-based serialization in examples
+
 ### Important Rules
 
 - ✅ Use bd for ALL task tracking
