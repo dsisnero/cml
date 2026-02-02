@@ -109,6 +109,61 @@ describe "CML::StreamIO" do
     writer.try &.close
   end
 
+  it "input1 reads one character without events" do
+    reader, writer = IO.pipe
+
+    ::spawn do
+      writer << "xy"
+      writer.flush
+      writer.close
+    end
+
+    instream = CML::StreamIO.open_text_in(reader)
+    result = CML::StreamIO.input1(instream)
+    result.should_not be_nil
+    char, stream2 = result.not_nil!
+    char.should eq('x')
+
+    result2 = CML::StreamIO.input1(stream2)
+    result2.should_not be_nil
+    char2, _stream3 = result2.not_nil!
+    char2.should eq('y')
+  ensure
+    reader.try &.close
+    writer.try &.close
+  end
+
+  it "input_n and input_all read data without events" do
+    reader, writer = IO.pipe
+
+    ::spawn do
+      writer << "hello"
+      writer.flush
+      writer.close
+    end
+
+    instream = CML::StreamIO.open_text_in(reader)
+    chunk, stream2 = CML::StreamIO.input_n(instream, 2)
+    chunk.should eq("he")
+
+    rest, _stream3 = CML::StreamIO.input_all(stream2)
+    rest.should eq("llo")
+  ensure
+    reader.try &.close
+    writer.try &.close
+  end
+
+  it "output writes text data" do
+    io = IO::Memory.new
+    outstream = CML::StreamIO.open_text_out(io)
+    outstream = CML::StreamIO.output(outstream, "hi")
+    outstream = CML::StreamIO.output1(outstream, '!')
+    CML::StreamIO.flush_out(outstream)
+    io.to_s.should eq("hi!")
+  ensure
+    io.close
+  end
+
   # Note: choose requires all events to have the same type parameter,
   # so you cannot choose between a stream event and a channel event
   # unless they return the same type. This is consistent with SML/NJ CML.

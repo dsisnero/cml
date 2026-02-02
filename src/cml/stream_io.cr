@@ -521,6 +521,28 @@ module CML
       end
     end
 
+    # Text output stream (Char elements, String vectors)
+    class TextOutstream < Outstream(Char)
+      def output(data : String) : TextOutstream
+        io << data
+        TextOutstream.new(io)
+      end
+
+      def output1(ch : Char) : TextOutstream
+        io << ch
+        TextOutstream.new(io)
+      end
+
+      def flush_out : TextOutstream
+        io.flush
+        TextOutstream.new(io)
+      end
+
+      def close_out : Nil
+        io.close
+      end
+    end
+
     # Event constructors for text streams
     def self.input1_evt(instream : TextInstream) : Event({Char, TextInstream}?)
       CML.with_nack do |nack|
@@ -551,45 +573,131 @@ module CML
       TextInstream.new(io)
     end
 
-    # Read a single character, returns nil on EOF.
-    def read_one : Char?
-      io.read_char
+    # Create a text output stream from an IO
+    def self.open_text_out(io : IO) : TextOutstream
+      TextOutstream.new(io)
     end
 
-    # Read up to n characters.
-    def read_n(n : Int32) : Slice(Char)
-      slice = Slice(Char).new(n)
-      count = 0
-      while count < n
+    class TextInstream
+      # Blocking input operations matching CML_STREAM_IO.
+      def input1 : {Char, TextInstream}?
         ch = io.read_char
-        break if ch.nil?
-        slice[count] = ch
-        count += 1
+        return nil if ch.nil?
+        {ch, TextInstream.new(io)}
       end
-      slice[0, count]
+
+      def input_n(n : Int32) : {String, TextInstream}
+        builder = String::Builder.new
+        count = 0
+        while count < n
+          ch = io.read_char
+          break if ch.nil?
+          builder << ch
+          count += 1
+        end
+        {builder.to_s, TextInstream.new(io)}
+      end
+
+      def input : {String, TextInstream}
+        bytes = io.read_available
+        str = bytes.empty? ? "" : String.new(bytes)
+        {str, TextInstream.new(io)}
+      end
+
+      def input_all : {String, TextInstream}
+        {io.gets_to_end, TextInstream.new(io)}
+      end
+
+      def close_in : Nil
+        io.close
+      end
+
+      def end_of_stream : Bool
+        return true if io.closed?
+        if io.responds_to?(:peek)
+          peek_bytes = io.peek
+          return peek_bytes.nil? || peek_bytes.empty?
+        end
+        false
+      end
+
+      # Read a single character, returns nil on EOF.
+      def read_one : Char?
+        io.read_char
+      end
+
+      # Read up to n characters.
+      def read_n(n : Int32) : Slice(Char)
+        slice = Slice(Char).new(n)
+        count = 0
+        while count < n
+          ch = io.read_char
+          break if ch.nil?
+          slice[count] = ch
+          count += 1
+        end
+        slice[0, count]
+      end
+
+      # Read all available characters (non-blocking).
+      def read_available : Slice(Char)
+        bytes = io.read_available
+        return Slice(Char).new(0) if bytes.empty?
+        str = String.new(bytes)
+        Slice(Char).new(str.size) { |i| str[i] }
+      end
+
+      # Read all remaining characters until EOF.
+      def read_all : Slice(Char)
+        chars = [] of Char
+        loop do
+          ch = io.read_char
+          break if ch.nil?
+          chars << ch
+        end
+        Slice(Char).new(chars.size) { |i| chars[i] }
+      end
     end
 
-    # Read all available characters (non-blocking).
-    def read_available : Slice(Char)
-      # Read available bytes without blocking
-      bytes = io.read_available
-      return Slice(Char).new(0) if bytes.empty?
-      # Decode UTF-8 bytes to characters
-      # Note: this may raise on invalid UTF-8, but we assume valid text stream
-      str = String.new(bytes)
-      # Convert String to Slice(Char)
-      Slice(Char).new(str.size) { |i| str[i] }
+    # Non-event StreamIO helpers
+    def self.input1(instream : TextInstream) : {Char, TextInstream}?
+      instream.input1
     end
 
-    # Read all remaining characters until EOF.
-    def read_all : Slice(Char)
-      chars = [] of Char
-      loop do
-        ch = io.read_char
-        break if ch.nil?
-        chars << ch
-      end
-      Slice(Char).new(chars.size) { |i| chars[i] }
+    def self.input_n(instream : TextInstream, n : Int32) : {String, TextInstream}
+      instream.input_n(n)
+    end
+
+    def self.input(instream : TextInstream) : {String, TextInstream}
+      instream.input
+    end
+
+    def self.input_all(instream : TextInstream) : {String, TextInstream}
+      instream.input_all
+    end
+
+    def self.end_of_stream(instream : TextInstream) : Bool
+      instream.end_of_stream
+    end
+
+    def self.close_in(instream : TextInstream) : Nil
+      instream.close_in
+    end
+
+    def self.output(outstream : TextOutstream, data : String) : TextOutstream
+      outstream.output(data)
+    end
+
+    def self.output1(outstream : TextOutstream, ch : Char) : TextOutstream
+      outstream.output1(ch)
+    end
+
+    def self.flush_out(outstream : TextOutstream) : TextOutstream
+      outstream.flush_out
+    end
+
+    def self.close_out(outstream : TextOutstream) : Nil
+      outstream.close_out
     end
   end
 end
