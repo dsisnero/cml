@@ -18,3 +18,6 @@
 # beads issue tracking (commit only issues.jsonl)
 /.beads/*
 !/.beads/issues.jsonl
+
+# Local Crystal cache (sandbox build artifacts)
+.crystal-cache/

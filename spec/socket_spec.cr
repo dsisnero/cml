@@ -11,14 +11,15 @@ describe "CML socket events" do
     received = Atomic(Bool).new(false)
 
     ::spawn do
-      socket = CML.sync(CML::Socket.accept_evt(server))
+      socket, _addr = CML.sync(CML::Socket.accept_evt(server))
       msg = CML.sync(CML::Socket.recv_evt(socket, 5))
       received.set(String.new(msg) == "ping\n")
       CML.sync(CML::Socket.send_evt(socket, "pong\n".to_slice))
       socket.close
     end
 
-    client = CML.sync(CML::Socket.connect_evt("127.0.0.1", port))
+    client = TCPSocket.new
+    CML.sync(CML::Socket.connect_evt(client, Socket::IPAddress.new("127.0.0.1", port)))
     CML.sync(CML::Socket.send_evt(client, "ping\n".to_slice))
     data = CML.sync(CML::Socket.recv_evt(client, 5))
 

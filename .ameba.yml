@@ -1,0 +1,49 @@
+# Ameba configuration file
+# Generated for CML project
+
+Globs:
+  - "**/*.cr"
+  - "**/*.ecr"
+
+Excluded:
+  - spec
+  - lib
+  - crystal
+  - examples
+  - benchmarks
+  - scripts
+  - samples
+  - history
+  - docs
+  - plans
+  - cml_book2
+  - hopac
+  - smlnj
+  - patches
+
+# Disable rules that are too strict or not applicable
+
+# Lint rules
+Lint/UselessAssign:
+  ExcludeTypeDeclarations: true
+
+Lint/NotNil:
+  Enabled: false
+
+# Naming rules - often too strict for tests and examples
+Naming/AccessorMethodName:
+  Enabled: false
+
+Naming/BlockParameterName:
+  Enabled: false
+
+Naming/QueryBoolMethods:
+  Enabled: false
+
+# Style rules
+Style/MultilineCurlyBlock:
+  Enabled: false
+
+# Metrics rules
+Metrics/CyclomaticComplexity:
+  Enabled: false

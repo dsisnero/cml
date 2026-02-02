@@ -87,7 +87,7 @@ describe "CML process helpers" do
 
   it "can race a system command with a timeout" do
     result = CML.sync(CML.choose([
-      CML.wrap(CML::Process.system_evt("sleep 0.3")) { "done" },
+      CML.wrap(CML::Process.system_evt("sleep 0.1")) { "done" },
       CML.wrap(CML.timeout(30.milliseconds)) { "timeout" },
     ]))
 

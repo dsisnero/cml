@@ -874,7 +874,7 @@ module CML
         case status
         when QueryStatus::Waiting
           # Remove from waiting list
-          removed_match, new_waiting = remove_from_list(bucket.waiting) do |m|
+          _, new_waiting = remove_from_list(bucket.waiting) do |m|
             m.id == id
           end
           bucket.waiting = new_waiting
@@ -977,7 +977,7 @@ module CML
 
       # Map from (ts_id, trans_id) to reply channel
       pending_transactions = Hash({Network::TsId, Int32}, Chan(Array(ValAtom))).new
-      pending_mutex = Mutex.new
+      pending_mutex = CML::Sync::Mutex.new
 
       # Mailbox for messages from tuple server connections
       proxy_mb = Mailbox(NamedTuple(
@@ -1140,7 +1140,7 @@ module CML
       add_ts = ->(info : Network::RemoteServerInfo) { servers << info }
 
       # Initialize network
-      my_id, network, remote_servers = Network.init_network(
+      _, _, remote_servers = Network.init_network(
         port: local_port,
         remote_hosts: remote_hosts,
         ts_req_mb: ts_req_mb,

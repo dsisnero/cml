@@ -15,7 +15,7 @@ module CML
     @messages = Deque(T).new
     @receivers = Deque({Slot(T), AtomicFlag, TransactionId}).new
     @priority = 0
-    @mtx = Mutex.new
+    @mtx = CML::Sync::Mutex.new
 
     def initialize
     end
@@ -66,6 +66,15 @@ module CML
     # Identity comparison
     def same?(other : Mailbox(T)) : Bool
       object_id == other.object_id
+    end
+
+    # Reset mailbox to initial state (clears pending messages and receivers)
+    def reset : Nil
+      @mtx.synchronize do
+        @messages.clear
+        @receivers.clear
+        @priority = 0
+      end
     end
 
     protected def make_recv_poll : Proc(EventStatus(T))

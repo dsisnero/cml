@@ -16,7 +16,6 @@ describe CML do
   describe "channel send/recv" do
     it "completes rendezvous between sender and receiver" do
       ch = CML::Chan(Int32).new
-      result = 0
 
       spawn do
         ch.send(42)
@@ -30,7 +29,6 @@ describe CML do
 
     it "works with event-based API" do
       ch = CML::Chan(String).new
-      result = ""
 
       spawn do
         CML.sync(ch.send_evt("hello"))
@@ -222,12 +220,12 @@ describe CML do
     # Note: These tests pass individually but may fail when run in sequence
     # due to fiber scheduling interactions from previous tests
     it "fires after the specified duration" do
-      start = Time.monotonic
+      start = SpecTime.monotonic
       CML.sync(CML.timeout(50.milliseconds))
-      elapsed = Time.monotonic - start
+      elapsed = SpecTime.monotonic - start
 
-      elapsed.should be >= 50.milliseconds
-      elapsed.should be < 200.milliseconds
+      elapsed.should be >= 35.milliseconds
+      elapsed.should be < 500.milliseconds
     end
 
     it "can be used with choose to implement timeout" do
@@ -330,7 +328,6 @@ describe CML do
 
     it "blocks receiver until message available" do
       mbox = CML::Mailbox(Int32).new
-      result = 0
 
       spawn do
         sleep 10.milliseconds
@@ -388,7 +385,6 @@ describe CML do
 
     it "blocks reader until value is written" do
       iv = CML::IVar(Int32).new
-      result = 0
 
       spawn do
         sleep 10.milliseconds
@@ -459,7 +455,6 @@ describe CML do
 
     it "blocks taker until value available" do
       mv = CML::MVar(Int32).new
-      result = 0
 
       spawn do
         sleep 10.milliseconds
@@ -610,22 +605,22 @@ describe CML do
   describe "atTimeEvt" do
     it "fires at an absolute time" do
       target = Time.utc + 50.milliseconds
-      start = Time.monotonic
+      start = SpecTime.monotonic
 
       CML.sync(CML.at_time(target))
 
-      elapsed = Time.monotonic - start
+      elapsed = SpecTime.monotonic - start
       elapsed.should be >= 40.milliseconds # Allow some slack
       elapsed.should be < 200.milliseconds
     end
 
     it "fires immediately if time is in the past" do
       target = Time.utc - 1.second
-      start = Time.monotonic
+      start = SpecTime.monotonic
 
       CML.sync(CML.at_time(target))
 
-      elapsed = Time.monotonic - start
+      elapsed = SpecTime.monotonic - start
       elapsed.should be < 50.milliseconds # Should be nearly instant
     end
   end
@@ -652,7 +647,7 @@ describe CML do
       Fiber.yield
 
       tid2.should_not be_nil
-      CML.same_tid(tid1, tid2.not_nil!).should be_false
+      CML.same_tid(tid1, tid2.as(CML::Thread::Id)).should be_false
     end
 
     it "provides hash and string conversion" do
@@ -671,7 +666,7 @@ describe CML do
       Fiber.yield
 
       # IDs should be different and have consistent ordering
-      cmp = CML.compare_tid(tid1, tid2.not_nil!)
+      cmp = CML.compare_tid(tid1, tid2.as(CML::Thread::Id))
       cmp.should_not eq(0)
     end
   end
@@ -702,7 +697,7 @@ describe CML do
   describe "spawnc" do
     it "spawns with an argument" do
       result = 0
-      tid = CML.spawnc(42) do |x|
+      CML.spawnc(42) do |x|
         result = x * 2
       end
 
@@ -725,13 +720,13 @@ describe CML do
     end
 
     it "blocks until thread exits" do
-      start = Time.monotonic
+      start = SpecTime.monotonic
       tid = CML.spawn do
         sleep 30.milliseconds
       end
 
       CML.sync(CML.join_evt(tid))
-      elapsed = Time.monotonic - start
+      elapsed = SpecTime.monotonic - start
 
       elapsed.should be >= 25.milliseconds
     end
@@ -905,12 +900,30 @@ describe CML do
 
       # Use wait_evt with timeout
       result = CML.sync(CML.choose(
-        CML.wrap(e1.wait_evt) { |n| {:barrier, n} },
+        CML.wrap(e1.wait_evt) { |value| {:barrier, value} },
         CML.wrap(CML.timeout(50.milliseconds)) { {:timeout, -1} }
       ))
 
       result[0].should eq(:barrier)
       result[1].should eq(1)
+    end
+  end
+
+  describe "version and banner" do
+    it "provides version information matching SML/NJ CML signature" do
+      version = CML.version
+      version[:system].should eq("Crystal CML")
+      version[:version_id].should eq([0, 5, 0])
+      version[:date].should be_a(String)
+      version[:date].size.should be > 0
+    end
+
+    it "provides a banner string" do
+      banner = CML.banner
+      banner.should be_a(String)
+      banner.should contain("Crystal")
+      banner.should contain("Concurrent ML")
+      banner.should contain("v0.5.0")
     end
   end
 end

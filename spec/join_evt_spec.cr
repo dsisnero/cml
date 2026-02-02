@@ -34,7 +34,7 @@ describe "CML.join_evt" do
     it "can be used with timeout in choose" do
       # Spawn a fiber that takes a long time
       tid = CML.spawn do
-        sleep 2.seconds
+        sleep 1.second
       end
 
       # Use choose with timeout - timeout should win
@@ -56,7 +56,7 @@ describe "CML.join_evt" do
 
       result = CML.sync(CML.choose([
         CML.wrap(CML.join_evt(tid)) { :joined },
-        CML.wrap(CML.timeout(500.milliseconds)) { :timeout },
+        CML.wrap(CML.timeout(100.milliseconds)) { :timeout },
       ]))
 
       result.should eq(:joined)

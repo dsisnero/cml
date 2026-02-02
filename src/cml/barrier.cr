@@ -102,7 +102,7 @@ module CML
     @enrolled_count = 0
     @waiting_count = 0
     @waiters = Deque({Slot(T), AtomicFlag, TransactionId}).new
-    @mtx = Mutex.new
+    @mtx = Sync::Mutex.new
 
     # Create a barrier with an update function and initial state
     # SML: val barrier : ('a -> 'a) -> 'a -> 'a barrier

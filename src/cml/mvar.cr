@@ -5,7 +5,7 @@ module CML
     @has_value = false
     @readers = Deque({Slot(T), AtomicFlag, TransactionId, Bool}).new # Bool = is_take?
     @priority = 0
-    @mtx = Mutex.new
+    @mtx = CML::Sync::Mutex.new
 
     # Events are nested to avoid polluting the CML namespace.
     class TakeEvent(U) < Event(U)
