@@ -625,10 +625,10 @@ module CML
               break if @cancel_flag.get
               CML.sync(CML::PrimitiveIO.wait_readable_evt(@socket, @nack_evt))
               buffer = Bytes.new(@length)
-              bytes = LibC.recv(@socket.fd, buffer, @length, @flags)
+              bytes = LibC.recv(@socket.fd, buffer, @length, CML::Socket.nonblock_flags(@flags))
               if bytes < 0
                 errno = Errno.value
-                if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK
+                if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK || errno == Errno::EINTR
                   # Not ready yet, wait and retry.
                   next
                 else
@@ -744,10 +744,10 @@ module CML
             loop do
               break if @cancel_flag.get
               CML.sync(CML::PrimitiveIO.wait_writable_evt(@socket, @nack_evt))
-              bytes = LibC.send(@socket.fd, @data, @data.size, @flags)
+              bytes = LibC.send(@socket.fd, @data, @data.size, CML::Socket.nonblock_flags(@flags))
               if bytes < 0
                 errno = Errno.value
-                if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK
+                if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK || errno == Errno::EINTR
                   next
                 else
                   raise IO::Error.from_os_error("send", errno)
@@ -862,10 +862,11 @@ module CML
               loop do
                 break if @cancel_flag.get
                 CML.sync(CML::PrimitiveIO.wait_writable_evt(@socket, @nack_evt))
-                bytes_sent = send_once(@flags)
-                next unless bytes_sent
-                deliver(bytes_sent, tid)
-                break
+                bytes_sent = send_once(CML::Socket.nonblock_flags(@flags))
+                if bytes_sent
+                  deliver(bytes_sent, tid)
+                  break
+                end
               end
             rescue ex : Exception
               deliver(ex, tid)
@@ -978,10 +979,10 @@ module CML
               loop do
                 break if @cancel_flag.get
                 CML.sync(CML::PrimitiveIO.wait_readable_evt(@socket, @nack_evt))
-                buffer = Bytes.new(@max)
-                bytes_read, addr = @socket.receive(buffer)
-                deliver({buffer[0, bytes_read], addr}, tid)
-                break
+                if result = try_recv_nonblock
+                  deliver(result, tid)
+                  break
+                end
               end
             rescue ex : Exception
               deliver(ex, tid)
