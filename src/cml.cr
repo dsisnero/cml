@@ -1,8 +1,10 @@
 # CML - Improved Crystal CML implementation
 
 require "./ext/io_wait_readable"
+require "./cml/sync"
 require "./timer_wheel"
 require "./trace_macro"
+require "atomic"
 
 #
 # This implementation is more closely aligned with SML/NJ CML semantics
@@ -15,6 +17,25 @@ require "./trace_macro"
 # 4. Proper priority-based selection for fairness
 
 module CML
+  # Version information matching SML/NJ CML signature
+  VERSION = {
+    system:     "Crystal CML",
+    version_id: [0, 5, 0],
+    date:       "2026-01-29",
+  }
+
+  # Banner string for identification
+  BANNER = "Crystal Concurrent ML Runtime v0.5.0"
+
+  # Accessor methods for compatibility with SML/NJ CML signature
+  def self.version : NamedTuple(system: String, version_id: Array(Int32), date: String)
+    VERSION
+  end
+
+  def self.banner : String
+    BANNER
+  end
+
   # -----------------------
   # Transaction ID
   # -----------------------
@@ -56,9 +77,13 @@ module CML
     # Try to cancel this transaction
     # Returns true if successfully cancelled, false if already cancelled or committed
     def try_cancel : Bool
-      old, success = @state.compare_and_set(TransactionState::Active, TransactionState::Cancelled)
+      CML.trace "TransactionId.try_cancel", id, @state.get, tag: "transaction"
+      _, success = @state.compare_and_set(TransactionState::Active, TransactionState::Cancelled)
       if success && (cleanup = @cleanup)
+        CML.trace "TransactionId.try_cancel success", id, tag: "transaction"
         cleanup.call
+      else
+        CML.trace "TransactionId.try_cancel already committed/cancelled", id, @state.get, tag: "transaction"
       end
       success
     end
@@ -74,9 +99,13 @@ module CML
     # Try to commit and resume the associated fiber
     # Returns true if this call successfully committed (and resumed), false if already committed/cancelled
     def try_commit_and_resume : Bool
-      old, success = @state.compare_and_set(TransactionState::Active, TransactionState::Committed)
+      CML.trace "TransactionId.try_commit_and_resume", id, @state.get, tag: "transaction"
+      _, success = @state.compare_and_set(TransactionState::Active, TransactionState::Committed)
       if success
+        CML.trace "TransactionId.try_commit_and_resume success", id, @fiber, tag: "transaction"
         @fiber.try(&.enqueue)
+      else
+        CML.trace "TransactionId.try_commit_and_resume already committed/cancelled", id, @state.get, tag: "transaction"
       end
       success
     end
@@ -219,7 +248,7 @@ module CML
   class Slot(T)
     @value : T?
     @has_value = false
-    @mtx = Mutex.new
+    @mtx = Sync::Mutex.new
 
     def initialize
       @value = nil
@@ -267,7 +296,33 @@ module CML
     def set(val : Bool)
       @value.set(val)
     end
+
+    # Atomically compare and set the flag
+    def compare_and_set(expected : Bool, desired : Bool) : Bool
+      _, success = @value.compare_and_set(expected, desired)
+      success
+    end
+
+    # Get with acquire memory ordering (ensures subsequent reads see writes from the thread that set the flag)
+    def get_with_acquire : Bool
+      Atomic::Ops.fence(:acquire, false)
+      @value.get
+    end
+
+    # Set with release memory ordering (ensures previous writes are visible to threads that subsequently get with acquire)
+    def set_with_release(val : Bool)
+      @value.set(val)
+      Atomic::Ops.fence(:release, false)
+    end
   end
+
+  # -----------------------
+  # Running Flag
+  # -----------------------
+  # Tracks whether CML is currently running.
+  # Based on SML/NJ's Running.isRunning flag.
+  # Starts true for backward compatibility (CML available without explicit run).
+  @@is_running : AtomicFlag = AtomicFlag.new.tap(&.set(true))
 
   # -----------------------
   # Channel
@@ -287,7 +342,7 @@ module CML
     # recv_slot holds the received value, recv_done signals completion
     @recv_q = Deque({Slot(T), AtomicFlag, TransactionId}).new
 
-    @mtx = Mutex.new
+    @mtx = Sync::Mutex.new
 
     def close
       @closed.set(true)
@@ -295,6 +350,15 @@ module CML
 
     def closed? : Bool
       @closed.get
+    end
+
+    # Reset channel to initial state (clears pending queues)
+    def reset : Nil
+      @mtx.synchronize do
+        @closed.set(false)
+        @send_q.clear
+        @recv_q.clear
+      end
     end
 
     # Identity comparison
@@ -731,7 +795,7 @@ module CML
     @ready = AtomicFlag.new
     @cancel_flag = AtomicFlag.new
     @started = false
-    @start_mtx = Mutex.new
+    @start_mtx = Sync::Mutex.new
     @timer_id : UInt64?
 
     def initialize(duration : Time::Span)
@@ -844,7 +908,12 @@ module CML
 
   # Synchronize on an event - the core CML operation
   def self.sync(evt : Event(T)) : T forall T
+    CML.trace "CML.sync start", evt.class, tag: "sync"
+    unless running?
+      raise "CML is not running (call CML.run first)"
+    end
     group = evt.force
+    CML.trace "CML.sync force complete", tag: "sync"
     sync_on_group(group)
   end
 
@@ -860,6 +929,7 @@ module CML
 
   # Sync on a list of base events (no nacks)
   private def self.sync_on_base_events(events : Array(Proc(EventStatus(T)))) : T forall T
+    CML.trace "sync_on_base_events start", events.size, tag: "sync"
     return sync_never(T) if events.empty?
     return sync_on_one(events.first) if events.size == 1
 
@@ -869,52 +939,69 @@ module CML
     events.each do |bevt|
       case status = bevt.call
       when Enabled(T)
+        CML.trace "sync_on_base_events found enabled", tag: "sync"
         return status.value
       when Blocked(T)
         blocked << {bevt, status}
       end
     end
 
+    CML.trace "sync_on_base_events all blocked", blocked.size, tag: "sync"
+
     # All events are blocked - register all and wait
     tid = TransactionId.new
     tid.set_fiber(Fiber.current)
+    CML.trace "sync_on_base_events tid created", tid.id, tag: "sync"
 
     blocked.each do |_, status|
       status.block_fn.call(tid, -> { })
     end
 
+    CML.trace "sync_on_base_events before suspend", tag: "sync"
     Fiber.suspend
+    CML.trace "sync_on_base_events after suspend", tag: "sync"
 
     # Find which event triggered
     events.each do |bevt|
       case status = bevt.call
       when Enabled(T)
+        CML.trace "sync_on_base_events post-suspend enabled", tag: "sync"
         return status.value
       end
     end
 
+    CML.trace "sync_on_base_events no event ready after resume", tag: "sync"
     raise "BUG: Fiber resumed but no event is ready"
   end
 
   # Sync on a single base event
   private def self.sync_on_one(bevt : Proc(EventStatus(T))) : T forall T
+    CML.trace "sync_on_one start", tag: "sync"
     case status = bevt.call
     when Enabled(T)
+      CML.trace "sync_on_one enabled", status.value, tag: "sync"
       status.value
     when Blocked(T)
+      CML.trace "sync_on_one blocked", tag: "sync"
       tid = TransactionId.new
       tid.set_fiber(Fiber.current)
+      CML.trace "sync_on_one before block_fn", tid.id, tag: "sync"
       status.block_fn.call(tid, -> { })
+      CML.trace "sync_on_one before suspend", tag: "sync"
       Fiber.suspend
+      CML.trace "sync_on_one after suspend", tag: "sync"
 
       # Re-poll after waking
       case status2 = bevt.call
       when Enabled(T)
+        CML.trace "sync_on_one after suspend enabled", status2.value, tag: "sync"
         status2.value
       else
+        CML.trace "sync_on_one after suspend not enabled", tag: "sync"
         raise "BUG: Fiber resumed but event not ready"
       end
     else
+      CML.trace "sync_on_one unknown status", tag: "sync"
       raise "BUG: Unknown status type"
     end
   end
@@ -1030,6 +1117,44 @@ module CML
   # Public API
   # -----------------------
 
+  # Check if CML is running
+  # SML: val isRunning : bool ref
+  def self.running? : Bool
+    @@is_running.get
+  end
+
+  # Set CML running state (for initialization/shutdown)
+  # Internal use - called by RunCML equivalent
+  def self.set_running(state : Bool) : Nil
+    @@is_running.set(state)
+  end
+
+  # Run CML with initial procedure (similar to SML/NJ RunCML.doit)
+  # Sets running flag, calls cleanup AtInit, runs block, ensures cleanup AtShutdown
+  def self.run(&block : -> Nil) : Nil
+    if running?
+      raise "CML is already running"
+    end
+    set_running(true)
+    Cleanup.clean_all(Cleanup::When::AtInit)
+    begin
+      block.call
+    ensure
+      Cleanup.clean_all(Cleanup::When::AtShutdown)
+      set_running(false)
+    end
+  end
+
+  # Shutdown CML (similar to SML/NJ RunCML.shutdown)
+  def self.shutdown : NoReturn
+    unless running?
+      raise "CML is not running"
+    end
+    Cleanup.clean_all(Cleanup::When::AtShutdown)
+    set_running(false)
+    exit # exit current thread
+  end
+
   def self.always(x : T) : Event(T) forall T
     AlwaysEvent(T).new(x)
   end
@@ -1067,6 +1192,17 @@ module CML
 
   def self.with_nack(&f : Event(Nil) -> Event(T)) : Event(T) forall T
     WithNackEvent(T).new(&f)
+  end
+
+  # Add a nack handler to an existing event
+  def self.nack(evt : Event(T), &block : -> Nil) : Event(T) forall T
+    with_nack do |nack_evt|
+      ::spawn do
+        CML.sync(nack_evt)
+        block.call
+      end
+      evt
+    end
   end
 
   def self.timeout(duration : Time::Span) : Event(Nil)
@@ -1206,6 +1342,9 @@ module CML
   # Spawn a new thread
   # SML: val spawn : (unit -> unit) -> thread_id
   def self.spawn(&block : -> Nil) : Thread::Id
+    unless running?
+      raise "CML is not running (call CML.run first)"
+    end
     # Create a slot to hold the ThreadId reference
     tid_slot = Slot(Thread::Id).new
     fiber = ::spawn do
@@ -1225,6 +1364,9 @@ module CML
   # Spawn a new thread with an argument
   # SML: val spawnc : ('a -> unit) -> 'a -> thread_id
   def self.spawnc(arg : A, &block : A -> Nil) : Thread::Id forall A
+    unless running?
+      raise "CML is not running (call CML.run first)"
+    end
     tid_slot = Slot(Thread::Id).new
     fiber = ::spawn do
       begin
@@ -1425,6 +1567,9 @@ module CML
   # Spawn a new thread
   # SML: val spawn : (unit -> unit) -> thread_id
   def self.spawn(&block : -> Nil) : Thread::Id
+    unless running?
+      raise "CML is not running (call CML.run first)"
+    end
     # Create a slot to hold the ThreadId reference
     tid_slot = Slot(Thread::Id).new
     fiber = ::spawn do
@@ -1444,6 +1589,9 @@ module CML
   # Spawn a new thread with an argument
   # SML: val spawnc : ('a -> unit) -> 'a -> thread_id
   def self.spawnc(arg : A, &block : A -> Nil) : Thread::Id forall A
+    unless running?
+      raise "CML is not running (call CML.run first)"
+    end
     tid_slot = Slot(Thread::Id).new
     fiber = ::spawn do
       begin
@@ -1497,6 +1645,8 @@ module CML
 end
 
 # Optional helpers (split files to keep cml.cr smaller)
+require "./cml/time_compat"
+require "./cml/cleanup"
 require "./cml/ivar"
 require "./cml/mvar"
 require "./cml/mailbox"
@@ -1514,3 +1664,4 @@ require "./cml/distributed_linda"
 require "./cml/cvar"
 require "./cml/thread"
 require "./cml/multicast"
+require "./cml/prim_io"

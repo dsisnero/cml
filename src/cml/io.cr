@@ -1,104 +1,5 @@
 module CML
   module IOEvents
-    # Event that reads a fixed number of bytes from an IO without blocking registration.
-    # Uses select polling in a background fiber and respects nack cancellation.
-    class ReadEvent < Event(Bytes)
-      @io : ::IO
-      @length : Int32
-      @nack_evt : Event(Nil)?
-      @ready = AtomicFlag.new
-      @cancel_flag = AtomicFlag.new
-      @result = Slot(Exception | Bytes).new
-      @started = false
-      @start_mtx = Mutex.new
-
-      def initialize(@io, @length, @nack_evt = nil)
-      end
-
-      def poll : EventStatus(Bytes)
-        if @ready.get
-          return Enabled(Bytes).new(priority: 0, value: fetch_result)
-        end
-
-        Blocked(Bytes).new do |tid, next_fn|
-          start_once(tid)
-          next_fn.call
-        end
-      end
-
-      protected def force_impl : EventGroup(Bytes)
-        BaseGroup(Bytes).new(-> : EventStatus(Bytes) { poll })
-      end
-
-      private def start_once(tid : TransactionId)
-        should_start = false
-
-        @start_mtx.synchronize do
-          unless @started
-            @started = true
-            should_start = true
-          end
-        end
-
-        return unless should_start
-
-        ::spawn do
-          begin
-            while wait_until_readable
-              break if @cancel_flag.get
-              buffer = Bytes.new(@length)
-              read_bytes = @io.read(buffer)
-              deliver(buffer[0, read_bytes], tid)
-              break
-            end
-          rescue ex : Exception
-            deliver(ex, tid)
-          end
-        end
-
-        start_nack_watcher(tid)
-      end
-
-      private def start_nack_watcher(tid : TransactionId)
-        if nack = @nack_evt
-          ::spawn do
-            CML.sync(nack)
-            @cancel_flag.set(true)
-            tid.try_cancel
-          end
-        end
-      end
-
-      private def wait_until_readable : Bool
-        return false if @cancel_flag.get
-
-        if @io.responds_to?(:wait_readable)
-          begin
-            return @io.wait_readable(50.milliseconds, raise_if_closed: false)
-          rescue
-            return true
-          end
-        end
-
-        true
-      end
-
-      private def deliver(value : Exception | Bytes, tid : TransactionId)
-        return if @cancel_flag.get
-        @result.set(value)
-        @ready.set(true)
-        tid.try_commit_and_resume
-      end
-
-      private def fetch_result : Bytes
-        case val = @result.get
-        when Exception
-          raise val
-        else
-          val
-        end
-      end
-    end
 
     # Event that reads a full line (or nil on EOF) from an IO as an event.
     class ReadLineEvent < Event(String?)
@@ -107,18 +8,20 @@ module CML
       @ready = AtomicFlag.new
       @cancel_flag = AtomicFlag.new
       @result = Slot(Exception | String?).new
-      @started = false
-      @start_mtx = Mutex.new
+      @started = AtomicFlag.new
 
       def initialize(@io, @nack_evt = nil)
       end
 
       def poll : EventStatus(String?)
-        if @ready.get
+        CML.trace "ReadLineEvent.poll", @io, tag: "io"
+        if @ready.get_with_acquire
+          CML.trace "ReadLineEvent.poll ready", @ready.get, tag: "io"
           return Enabled(String?).new(priority: 0, value: fetch_result)
         end
 
         Blocked(String?).new do |tid, next_fn|
+          CML.trace "ReadLineEvent.poll blocked", tid.id, tag: "io"
           start_once(tid)
           next_fn.call
         end
@@ -129,26 +32,23 @@ module CML
       end
 
       private def start_once(tid : TransactionId)
-        should_start = false
-
-        @start_mtx.synchronize do
-          unless @started
-            @started = true
-            should_start = true
-          end
-        end
-
-        return unless should_start
+        CML.trace "ReadLineEvent.start_once", tid.id, tag: "io"
+        return unless @started.compare_and_set(false, true)
+        CML.trace "ReadLineEvent.start_once spawned", tag: "io"
 
         ::spawn do
           begin
+            result = nil
             while wait_until_readable
-              break if @cancel_flag.get
-              line = @io.gets(chomp: false)
-              deliver(line, tid)
+              CML.trace "ReadLineEvent.wait_until_readable true", tag: "io"
+              break if @cancel_flag.get_with_acquire
+              result = @io.gets(chomp: false)
+              CML.trace "ReadLineEvent.gets result", result.inspect, tag: "io"
               break
             end
+            deliver(result, tid)
           rescue ex : Exception
+            CML.trace "ReadLineEvent.start_once rescue", ex, tag: "io"
             deliver(ex, tid)
           end
         end
@@ -160,30 +60,33 @@ module CML
         if nack = @nack_evt
           ::spawn do
             CML.sync(nack)
-            @cancel_flag.set(true)
+            @cancel_flag.set_with_release(true)
             tid.try_cancel
           end
         end
       end
 
       private def wait_until_readable : Bool
-        return false if @cancel_flag.get
+        CML.trace "ReadLineEvent.wait_until_readable start", tag: "io"
+        return false if @cancel_flag.get_with_acquire
 
-        if @io.responds_to?(:wait_readable)
-          begin
-            return @io.wait_readable(50.milliseconds, raise_if_closed: false)
-          rescue
-            return true
-          end
+        begin
+          # Use PrimitiveIO backend for waiting
+          CML.trace "ReadLineEvent.wait_until_readable sync", tag: "io"
+          CML.sync(CML::PrimitiveIO.wait_readable_evt(@io, @nack_evt))
+          CML.trace "ReadLineEvent.wait_until_readable true", tag: "io"
+          true
+        rescue ex : Exception
+          # IO closed or nack triggered
+          CML.trace "ReadLineEvent.wait_until_readable rescue", ex, tag: "io"
+          false
         end
-
-        true
       end
 
       private def deliver(value : Exception | String?, tid : TransactionId)
-        return if @cancel_flag.get
+        return if @cancel_flag.get_with_acquire
         @result.set(value)
-        @ready.set(true)
+        @ready.set_with_release(true)
         tid.try_commit_and_resume
       end
 
@@ -204,14 +107,13 @@ module CML
       @ready = AtomicFlag.new
       @cancel_flag = AtomicFlag.new
       @result = Slot(Exception | String).new
-      @started = false
-      @start_mtx = Mutex.new
+      @started = AtomicFlag.new
 
       def initialize(@io, @nack_evt = nil)
       end
 
       def poll : EventStatus(String)
-        if @ready.get
+        if @ready.get_with_acquire
           return Enabled(String).new(priority: 0, value: fetch_result)
         end
 
@@ -226,26 +128,17 @@ module CML
       end
 
       private def start_once(tid : TransactionId)
-        should_start = false
-
-        @start_mtx.synchronize do
-          unless @started
-            @started = true
-            should_start = true
-          end
-        end
-
-        return unless should_start
+        return unless @started.compare_and_set(false, true)
 
         ::spawn do
           begin
             buffer = String::Builder.new
-            chunk_buf = Bytes.new(4096)
             loop do
-              break if @cancel_flag.get
-              read_bytes = @io.read(chunk_buf)
-              break if read_bytes == 0
-              buffer.write(chunk_buf[0, read_bytes])
+              break if @cancel_flag.get_with_acquire
+              # Read chunk using PrimitiveIO backend
+              chunk = CML.sync(CML::PrimitiveIO.read_evt(@io, 4096, @nack_evt))
+              break if chunk.empty?  # EOF
+              buffer.write(chunk)
             end
             deliver(buffer.to_s, tid)
           rescue ex : Exception
@@ -257,33 +150,36 @@ module CML
       end
 
       private def wait_until_readable : Bool
-        return false if @cancel_flag.get
+        CML.trace "ReadAllEvent.wait_until_readable start", tag: "io"
+        return false if @cancel_flag.get_with_acquire
 
-        if @io.responds_to?(:wait_readable)
-          begin
-            return @io.wait_readable(50.milliseconds, raise_if_closed: false)
-          rescue
-            return true
-          end
+        begin
+          # Use PrimitiveIO backend for waiting
+          CML.trace "ReadAllEvent.wait_until_readable sync", tag: "io"
+          CML.sync(CML::PrimitiveIO.wait_readable_evt(@io, @nack_evt))
+          CML.trace "ReadAllEvent.wait_until_readable true", tag: "io"
+          true
+        rescue ex : Exception
+          # IO closed or nack triggered
+          CML.trace "ReadAllEvent.wait_until_readable rescue", ex, tag: "io"
+          false
         end
-
-        true
       end
 
       private def start_nack_watcher(tid : TransactionId)
         if nack = @nack_evt
           ::spawn do
             CML.sync(nack)
-            @cancel_flag.set(true)
+            @cancel_flag.set_with_release(true)
             tid.try_cancel
           end
         end
       end
 
       private def deliver(value : Exception | String, tid : TransactionId)
-        return if @cancel_flag.get
+        return if @cancel_flag.get_with_acquire
         @result.set(value)
-        @ready.set(true)
+        @ready.set_with_release(true)
         tid.try_commit_and_resume
       end
 
@@ -297,109 +193,20 @@ module CML
       end
     end
 
-    # Event that writes bytes to an IO once it is writable.
-    class WriteEvent < Event(Int32)
-      @io : ::IO
-      @data : Bytes
-      @nack_evt : Event(Nil)?
-      @ready = AtomicFlag.new
-      @cancel_flag = AtomicFlag.new
-      @result = Slot(Exception | Int32).new
-      @started = false
-      @start_mtx = Mutex.new
-
-      def initialize(@io, data : Bytes, @nack_evt = nil)
-        @data = data.dup
-      end
-
-      def poll : EventStatus(Int32)
-        if @ready.get
-          return Enabled(Int32).new(priority: 0, value: fetch_result)
-        end
-
-        Blocked(Int32).new do |tid, next_fn|
-          start_once(tid)
-          next_fn.call
-        end
-      end
-
-      protected def force_impl : EventGroup(Int32)
-        BaseGroup(Int32).new(-> : EventStatus(Int32) { poll })
-      end
-
-      private def start_once(tid : TransactionId)
-        should_start = false
-
-        @start_mtx.synchronize do
-          unless @started
-            @started = true
-            should_start = true
-          end
-        end
-
-        return unless should_start
-
-        ::spawn do
-          begin
-            bytes_written = 0
-            while bytes_written < @data.size
-              break if @cancel_flag.get
-              @io.wait_writable(50.milliseconds)
-              slice = @data[bytes_written..]
-              @io.write(slice)
-              bytes_written += slice.size
-            end
-            deliver(bytes_written, tid)
-          rescue ex : Exception
-            deliver(ex, tid)
-          end
-        end
-
-        start_nack_watcher(tid)
-      end
-
-      private def start_nack_watcher(tid : TransactionId)
-        if nack = @nack_evt
-          ::spawn do
-            CML.sync(nack)
-            @cancel_flag.set(true)
-            tid.try_cancel
-          end
-        end
-      end
-
-      private def deliver(value : Exception | Int32, tid : TransactionId)
-        return if @cancel_flag.get
-        @result.set(value)
-        @ready.set(true)
-        tid.try_commit_and_resume
-      end
-
-      private def fetch_result : Int32
-        case val = @result.get
-        when Exception
-          raise val
-        else
-          val
-        end
-      end
-    end
-
-    # Event that flushes an IO once writable.
     class FlushEvent < Event(Nil)
       @io : ::IO
       @nack_evt : Event(Nil)?
       @ready = AtomicFlag.new
       @cancel_flag = AtomicFlag.new
-      @started = false
-      @start_mtx = Mutex.new
+      @result = Slot(Exception | Nil).new
+      @started = AtomicFlag.new
 
       def initialize(@io, @nack_evt = nil)
       end
 
       def poll : EventStatus(Nil)
-        if @ready.get
-          return Enabled(Nil).new(priority: 0, value: nil)
+        if @ready.get_with_acquire
+          return Enabled(Nil).new(priority: 0, value: fetch_result)
         end
 
         Blocked(Nil).new do |tid, next_fn|
@@ -413,24 +220,15 @@ module CML
       end
 
       private def start_once(tid : TransactionId)
-        should_start = false
-
-        @start_mtx.synchronize do
-          unless @started
-            @started = true
-            should_start = true
-          end
-        end
-
-        return unless should_start
+        return unless @started.compare_and_set(false, true)
 
         ::spawn do
           begin
-            @io.wait_writable(50.milliseconds)
+            CML.sync(CML::PrimitiveIO.wait_writable_evt(@io, @nack_evt))
             @io.flush
-            deliver(tid)
+            deliver(nil, tid)
           rescue ex : Exception
-            deliver_error(ex, tid)
+            deliver(ex, tid)
           end
         end
 
@@ -441,22 +239,26 @@ module CML
         if nack = @nack_evt
           ::spawn do
             CML.sync(nack)
-            @cancel_flag.set(true)
+            @cancel_flag.set_with_release(true)
             tid.try_cancel
           end
         end
       end
 
-      private def deliver(tid : TransactionId)
-        return if @cancel_flag.get
-        @ready.set(true)
+      private def deliver(value : Exception | Nil, tid : TransactionId)
+        return if @cancel_flag.get_with_acquire
+        @result.set(value)
+        @ready.set_with_release(true)
         tid.try_commit_and_resume
       end
 
-      private def deliver_error(ex : Exception, tid : TransactionId)
-        return if @cancel_flag.get
-        @ready.set(true)
-        raise ex
+      private def fetch_result : Nil
+        case val = @result.get
+        when Exception
+          raise val
+        else
+          val
+        end
       end
     end
   end
@@ -468,7 +270,7 @@ module CML
   # Event that reads up to `bytes` from an IO.
   def self.read_evt(io : ::IO, bytes : Int32) : Event(Bytes)
     with_nack do |nack|
-      IOEvents::ReadEvent.new(io, bytes, nack)
+      PrimitiveIO.read_evt(io, bytes, nack)
     end
   end
 
@@ -499,7 +301,7 @@ module CML
   # Event that writes bytes to an IO.
   def self.write_evt(io : ::IO, data : Bytes) : Event(Int32)
     with_nack do |nack|
-      IOEvents::WriteEvent.new(io, data, nack)
+      PrimitiveIO.write_evt(io, data, nack)
     end
   end
 
