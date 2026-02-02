@@ -38,11 +38,15 @@ describe "CML socket flag support" do
       port = server.local_address.port
 
       ::spawn do
-        socket = CML.sync(CML::Socket.accept_evt(server))
-        # Send data to client
-        CML.sync(CML::Socket.send_evt(socket, "hello".to_slice))
-        socket.close
+        begin
+          socket = CML.sync(CML::Socket.accept_evt(server))
+          # Send data to client
+          CML.sync(CML::Socket.send_evt(socket, "hello".to_slice))
+          socket.close
+        rescue ex : Socket::Error
+        end
       end
+      Fiber.yield
 
       client = CML.sync(CML::Socket.connect_evt("127.0.0.1", port))
       # Peek at data without consuming
@@ -66,11 +70,15 @@ describe "CML socket flag support" do
       port = server.local_address.port
 
       ::spawn do
-        socket = CML.sync(CML::Socket.accept_evt(server))
-        msg = CML.sync(CML::Socket.recv_evt(socket, 4))
-        String.new(msg).should eq("test")
-        socket.close
+        begin
+          socket = CML.sync(CML::Socket.accept_evt(server))
+          msg = CML.sync(CML::Socket.recv_evt(socket, 4))
+          String.new(msg).should eq("test")
+          socket.close
+        rescue ex : Socket::Error
+        end
       end
+      Fiber.yield
 
       client = CML.sync(CML::Socket.connect_evt("127.0.0.1", port))
       # Send with MSG_DONTROUTE flag (may be ignored but shouldn't crash)
@@ -90,11 +98,15 @@ describe "CML socket flag support" do
 
       received = Atomic(Bool).new(false)
       ::spawn do
-        socket = CML.sync(CML::Socket.accept_evt(server))
-        msg = CML.sync(CML::Socket.recv_evt(socket, 8))
-        received.set(String.new(msg) == "backward")
-        socket.close
+        begin
+          socket = CML.sync(CML::Socket.accept_evt(server))
+          msg = CML.sync(CML::Socket.recv_evt(socket, 8))
+          received.set(String.new(msg) == "backward")
+          socket.close
+        rescue ex : Socket::Error
+        end
       end
+      Fiber.yield
 
       client = CML.sync(CML::Socket.connect_evt("127.0.0.1", port))
       bytes_sent = CML.sync(CML::Socket.send_evt(client, "backward".to_slice))

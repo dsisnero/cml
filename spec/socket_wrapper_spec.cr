@@ -147,7 +147,7 @@ describe "CML socket wrapper factory" do
       bytes_sent.should eq(data.size)
 
       recv_event = CML::Socket::UDP.recv_evt(server, 1024)
-      received, addr = CML.sync(recv_event)
+      received, _ = CML.sync(recv_event)
       String.new(received).should eq("test")
 
       client.close

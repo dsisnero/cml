@@ -4,7 +4,7 @@ require "../src/cml/simple_rpc"
 describe RPC do
   describe "mk_rpc (stateless)" do
     it "creates a working RPC endpoint and handles single call" do
-      rpc = RPC.mk_rpc(Int32, Int32) { |n| n * 2 }
+      rpc = RPC.mk_rpc(Int32, Int32) { |value| value * 2 }
 
       # Start server
       spawn { CML.sync(rpc.entry_evt) }
@@ -15,7 +15,7 @@ describe RPC do
     end
 
     it "handles multiple sequential calls" do
-      rpc = RPC.mk_rpc(Int32, String) { |n| "Value: #{n}" }
+      rpc = RPC.mk_rpc(Int32, String) { |value| "Value: #{value}" }
 
       # Server handles 3 requests
       spawn { CML.sync(rpc.entry_evt) }
@@ -43,7 +43,7 @@ describe RPC do
   describe "mk_rpc_in (input state)" do
     it "passes state to the handler" do
       multiplier = 2
-      rpc = RPC.mk_rpc_in(Int32, Int32, Int32) { |n, mult| n * mult }
+      rpc = RPC.mk_rpc_in(Int32, Int32, Int32) { |input, mult| input * mult }
 
       # Server uses the same state for both calls
       spawn { CML.sync(rpc.entry_evt.call(multiplier)) }
@@ -57,7 +57,7 @@ describe RPC do
 
   describe "mk_rpc_out (output state)" do
     it "returns new state from handler" do
-      rpc = RPC.mk_rpc_out(Int32, Int32, Int32) { |n| {n * 2, n} }
+      rpc = RPC.mk_rpc_out(Int32, Int32, Int32) { |value| {value * 2, value} }
 
       last_state = 0
       spawn { last_state = CML.sync(rpc.entry_evt) }

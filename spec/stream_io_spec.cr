@@ -16,7 +16,7 @@ describe "CML::StreamIO" do
     # First character
     result = CML.sync(event)
     result.should_not be_nil
-    char, stream2 = result.not_nil!
+    char, stream2 = result.as({Char, CML::StreamIO::Instream(Char)})
     char.should eq('a')
 
     # Second character (use new stream)

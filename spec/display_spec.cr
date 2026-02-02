@@ -76,7 +76,6 @@ describe "Display System" do
 
     it "realizes a child window" do
       parent_bitmap = Mock::MockBitmap.new(Rect.new(x: 0, y: 0, wid: 800, ht: 600))
-      parent_env = WinEnv.mk_env(parent_bitmap)
       child_rect = Rect.new(x: 10, y: 10, wid: 200, ht: 100)
       result = WinEnv.realize(parent_bitmap, child_rect) do |child_env|
         child_env.bmap.should be_a(DpySystem::Bitmap)
@@ -119,8 +118,6 @@ describe "Display System" do
   describe Menu do
     it "creates a menu" do
       bitmap = Mock::MockBitmap.new(Rect.new(x: 0, y: 0, wid: 800, ht: 600))
-      env = WinEnv.mk_env(bitmap)
-      items = [{"Item 1", :item1}, {"Item 2", :item2}]
       # Menu.menu expects a mouse channel, but we can't easily simulate.
       # We'll just test that the function exists and returns nil for now.
       # Since we can't easily simulate mouse input, we skip actual call.

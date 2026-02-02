@@ -200,7 +200,7 @@ describe "CML EventLoop Compatibility" do
       # Create Parallel context with 4 threads
       context = Fiber::ExecutionContext::Parallel.new("concurrent_read", maximum: 4)
       results = Channel(String?).new(lines.size)
-      
+
       lines.size.times do
         context.spawn do
           # Each fiber reads a line using CML

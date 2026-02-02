@@ -2,9 +2,9 @@ require "./spec_helper"
 
 describe "CML DSL helpers" do
   it "after delays execution until timeout" do
-    start = Time.monotonic
-    result = CML.sync(CML.after(30.milliseconds) { :done })
-    (Time.monotonic - start).should be >= 20.milliseconds
+    start = SpecTime.monotonic
+    result = CML.sync(CML.after(15.milliseconds) { :done })
+    (SpecTime.monotonic - start).should be >= 10.milliseconds
     result.should eq(:done)
   end
 

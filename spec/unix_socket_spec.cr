@@ -62,6 +62,7 @@ describe "CML Unix socket events" do
       client.inner.connect(Socket::UNIXAddress.new(socket_path))
 
       CML.sync(CML::Socket.send_evt(client, "test\n".to_slice))
+      CML.sync(CML.timeout(10.milliseconds))
       received.get.should be_true
 
       client.close

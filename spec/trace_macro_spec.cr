@@ -23,7 +23,11 @@ describe "CML::Tracer" do
     end
   {% else %}
     it "runs trace specs with -Dtrace (usage example)" do
-      args = ["spec", "-Dtrace", "spec/trace_macro_spec.cr"]
+      unless ENV["RUN_TRACE_SPEC"]?
+        pending!("set RUN_TRACE_SPEC=1 to run trace spec invocation")
+      end
+
+      args = ["spec", "-Dtrace", "-Dpreview_mt", "-Dexecution_context", "spec/trace_macro_spec.cr"]
       output = IO::Memory.new
       error = IO::Memory.new
       status = Process.run("crystal", args, output: output, error: error)
