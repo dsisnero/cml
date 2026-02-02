@@ -31,7 +31,11 @@ built from first principles using events, channels, and fibers.
 [![Crystal CI](https://img.shields.io/badge/Crystal-1.0+-brightgreen.svg)](https://crystal-lang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+**Compatibility Note:** For Crystal 1.19.0 and later, you must compile with `-Dpreview_mt -Dexecution_context` flags to enable thread-safe synchronization primitives.
+
 ---
+
+
 
 ## 1. Overview
 
