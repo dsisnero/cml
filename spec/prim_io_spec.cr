@@ -196,4 +196,42 @@ describe CML::PrimitiveIO do
     end
   end
   {% end %}
+
+  describe "ChanIO adapters" do
+    it "adapts channels to PrimIO reader/writer" do
+      chan = CML::Chan(Bytes?).new
+      reader = CML::ChanIO.mk_reader(chan, chunk_size: 4)
+      writer = CML::ChanIO.mk_writer(chan, chunk_size: 4)
+
+      spawn do
+        writer.write_vec("pingpong".to_slice)
+        writer.close
+      end
+
+      first = CML.sync(reader.read_vec_evt(4))
+      String.new(first).should eq("ping")
+
+      second = reader.read_vec(4)
+      String.new(second).should eq("pong")
+
+      eof = CML.sync(reader.read_vec_evt(4))
+      eof.should be_empty
+    end
+
+    it "supports read_arr_evt and write_vec_evt" do
+      chan = CML::Chan(Bytes?).new
+      reader = CML::ChanIO.mk_reader(chan)
+      writer = CML::ChanIO.mk_writer(chan)
+
+      buffer = Bytes.new(4)
+      spawn do
+        CML.sync(writer.write_vec_evt("data".to_slice))
+        writer.close
+      end
+
+      bytes_read = CML.sync(reader.read_arr_evt(buffer))
+      bytes_read.should eq(4)
+      String.new(buffer).should eq("data")
+    end
+  end
 end
