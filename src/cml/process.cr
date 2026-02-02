@@ -9,7 +9,7 @@ module CML
       @cancel_flag = AtomicFlag.new
       @result = Slot(Exception | ::Process::Status).new
       @started = false
-      @start_mtx = Mutex.new
+      @start_mtx = CML::Sync::Mutex.new
 
       def initialize(@command, @nack_evt = nil)
       end

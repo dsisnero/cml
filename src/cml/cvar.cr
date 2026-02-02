@@ -27,7 +27,7 @@ module CML
     end
 
     @state : State
-    @mtx = Mutex.new
+    @mtx = CML::Sync::Mutex.new
 
     def initialize
       @state = Unset.new

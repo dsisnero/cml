@@ -4,7 +4,7 @@ module CML
     @value : Slot(T)
     @readers = Deque({Slot(T), AtomicFlag, TransactionId}).new
     @priority = 0
-    @mtx = Mutex.new
+    @mtx = CML::Sync::Mutex.new
 
     # Event used to wait for the value without leaking into the CML namespace.
     class GetEvent(U) < Event(U)

@@ -10,7 +10,7 @@ module CML
 
       @@id_counter = Atomic(UInt64).new(0_u64)
       @@fiber_to_tid = {} of Fiber => Id
-      @@tid_mtx = Mutex.new
+      @@tid_mtx = CML::Sync::Mutex.new
 
       protected def initialize(@fiber : Fiber, register : Bool = true)
         @id = @@id_counter.add(1)
@@ -122,7 +122,7 @@ module CML
     class Prop(T)
       @values = {} of UInt64 => T
       @init_fn : -> T
-      @mtx = Mutex.new
+      @mtx = CML::Sync::Mutex.new
 
       def initialize(&@init_fn : -> T)
       end
@@ -167,7 +167,7 @@ module CML
     # Thread flag - simple boolean thread-local storage
     class Flag
       @values = {} of UInt64 => Bool
-      @mtx = Mutex.new
+      @mtx = CML::Sync::Mutex.new
 
       def initialize
       end

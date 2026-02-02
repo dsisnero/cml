@@ -44,7 +44,7 @@ module CML
       @pending_timers = Array(TimerEntry).new
       @next_id = 0_u64
       @timer_locations = Hash(UInt64, TimerEntry).new
-      @mutex = Mutex.new
+      @mutex = Sync::Mutex.new
       @running = true
       @sync_callbacks = sync_callbacks
 
@@ -316,7 +316,7 @@ module CML
     end
 
     private def process_expired_internal
-      now_ms = Time.monotonic.total_milliseconds.to_u64
+      now_ms = CML.monotonic_milliseconds
       if @current_time == 0
         @current_time = now_ms
       end

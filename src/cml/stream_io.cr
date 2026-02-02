@@ -74,8 +74,8 @@ module CML
         @cancel_flag = AtomicFlag.new
         @result = Slot(Exception | {Char, TextInstream}?).new
         @started = false
-        @start_mtx : Mutex
-        @start_mtx = Mutex.new(:reentrant)
+        @start_mtx : CML::Sync::Mutex
+        @start_mtx = CML::Sync::Mutex.new(:reentrant)
 
         def initialize(@instream, @nack_evt = nil)
         end
@@ -119,9 +119,9 @@ module CML
                 end
                 char = @instream.io.read_char
                 if char.nil?
+                  # EOF
                   deliver(nil, tid)
                 else
-                  # Create new stream for continuation
                   new_stream = TextInstream.new(@instream.io)
                   deliver({char, new_stream}, tid)
                 end
@@ -183,250 +183,6 @@ module CML
         end
       end
 
-      # Event that reads up to n characters
-      class InputNEvent < Event({String, TextInstream})
-        @instream : TextInstream
-        @n : Int32
-        @nack_evt : Event(Nil)?
-        @ready = AtomicFlag.new
-        @cancel_flag = AtomicFlag.new
-        @result = Slot(Exception | {String, TextInstream}).new
-        @started = false
-        @start_mtx : Mutex
-        @start_mtx = Mutex.new(:reentrant)
-
-        def initialize(@instream, @n, @nack_evt = nil)
-          raise ArgumentError.new("n must be non-negative") if n < 0
-        end
-
-        def poll : EventStatus({String, TextInstream})
-          if @ready.get
-            return Enabled({String, TextInstream}).new(priority: 0, value: fetch_result)
-          end
-
-          Blocked({String, TextInstream}).new do |tid, next_fn|
-            start_once(tid)
-            next_fn.call
-          end
-        end
-
-        protected def force_impl : EventGroup({String, TextInstream})
-          BaseGroup({String, TextInstream}).new(-> : EventStatus({String, TextInstream}) { poll })
-        end
-
-        private def start_once(tid : TransactionId)
-          should_start = false
-
-          @start_mtx.synchronize do
-            unless @started
-              @started = true
-              should_start = true
-            end
-          end
-
-          return unless should_start
-
-          ::spawn do
-            begin
-              delivered = false
-              while wait_until_readable
-                break if @cancel_flag.get
-                # Read exactly n characters
-                builder = String::Builder.new
-                remaining = @n
-                io = @instream.io
-                while remaining > 0
-                  char = io.read_char
-                  break if char.nil?
-                  builder << char
-                  remaining -= 1
-                end
-                result_str = builder.to_s
-                # Create new stream for continuation
-                new_stream = TextInstream.new(io)
-                deliver({result_str, new_stream}, tid)
-                delivered = true
-                break
-              end
-
-              # If we never delivered (wait_until_readable was false or cancelled)
-              # we're at EOF (not readable and won't become readable)
-              unless delivered
-                new_stream = TextInstream.new(@instream.io)
-                deliver({"", new_stream}, tid)
-              end
-            rescue ex : Exception
-              deliver(ex, tid)
-            end
-          end
-
-          start_nack_watcher(tid)
-        end
-
-        private def start_nack_watcher(tid : TransactionId)
-          if nack = @nack_evt
-            ::spawn do
-              CML.sync(nack)
-              @cancel_flag.set(true)
-              tid.try_cancel
-            end
-          end
-        end
-
-        private def wait_until_readable : Bool
-          return false if @cancel_flag.get
-
-          if @instream.io.responds_to?(:wait_readable)
-            begin
-              readable = @instream.io.wait_readable(50.milliseconds, raise_if_closed: false)
-              return readable
-            rescue ex
-              return true
-            end
-          end
-
-          true
-        end
-
-        private def deliver(value : Exception | {String, TextInstream}, tid : TransactionId)
-          return if @cancel_flag.get
-          @result.set(value)
-          @ready.set(true)
-          tid.try_commit_and_resume
-        end
-
-        private def fetch_result : {String, TextInstream}
-          case val = @result.get
-          when Exception
-            raise val
-          else
-            val
-          end
-        end
-      end
-
-      # Event that reads available input
-      class InputEvent < Event({String, TextInstream})
-        @instream : TextInstream
-        @nack_evt : Event(Nil)?
-        @ready = AtomicFlag.new
-        @cancel_flag = AtomicFlag.new
-        @result = Slot(Exception | {String, TextInstream}).new
-        @started = false
-        @start_mtx : Mutex
-        @start_mtx = Mutex.new(:reentrant)
-
-        def initialize(@instream, @nack_evt = nil)
-        end
-
-        def poll : EventStatus({String, TextInstream})
-          if @ready.get
-            return Enabled({String, TextInstream}).new(priority: 0, value: fetch_result)
-          end
-
-          Blocked({String, TextInstream}).new do |tid, next_fn|
-            start_once(tid)
-            next_fn.call
-          end
-        end
-
-        protected def force_impl : EventGroup({String, TextInstream})
-          BaseGroup({String, TextInstream}).new(-> : EventStatus({String, TextInstream}) { poll })
-        end
-
-        private def start_once(tid : TransactionId)
-          should_start = false
-
-          @start_mtx.synchronize do
-            unless @started
-              @started = true
-              should_start = true
-            end
-          end
-
-          return unless should_start
-
-          ::spawn do
-            begin
-              delivered = false
-              loop do
-                break if @cancel_flag.get
-                readable = wait_until_readable
-                unless readable
-                  # timeout, continue waiting
-                  next
-                end
-                # readable (or closed)
-                io = @instream.io
-                buffer = Bytes.new(4096)
-                read_bytes = io.read(buffer)
-                if read_bytes == 0
-                  # EOF
-                  deliver({"", TextInstream.new(io)}, tid)
-                else
-                  str = String.new(buffer[0, read_bytes])
-                  new_stream = TextInstream.new(io)
-                  deliver({str, new_stream}, tid)
-                end
-                delivered = true
-                break
-              end
-
-              # If we never delivered (cancelled before readable)
-              unless delivered
-                new_stream = TextInstream.new(@instream.io)
-                deliver({"", new_stream}, tid)
-              end
-            rescue ex : Exception
-              deliver(ex, tid)
-            end
-          end
-
-          start_nack_watcher(tid)
-        end
-
-        private def start_nack_watcher(tid : TransactionId)
-          if nack = @nack_evt
-            ::spawn do
-              CML.sync(nack)
-              @cancel_flag.set(true)
-              tid.try_cancel
-            end
-          end
-        end
-
-        private def wait_until_readable : Bool
-          return false if @cancel_flag.get
-
-          if @instream.io.responds_to?(:wait_readable)
-            begin
-              readable = @instream.io.wait_readable(50.milliseconds, raise_if_closed: false)
-              return readable
-            rescue ex
-              return true
-            end
-          end
-
-          true
-        end
-
-        private def deliver(value : Exception | {String, TextInstream}, tid : TransactionId)
-          return if @cancel_flag.get
-          @result.set(value)
-          @ready.set(true)
-          tid.try_commit_and_resume
-        end
-
-        private def fetch_result : {String, TextInstream}
-          case val = @result.get
-          when Exception
-            raise val
-          else
-            val
-          end
-        end
-      end
-
       # Event that reads all remaining input
       class InputAllEvent < Event({String, TextInstream})
         @instream : TextInstream
@@ -435,8 +191,8 @@ module CML
         @cancel_flag = AtomicFlag.new
         @result = Slot(Exception | {String, TextInstream}).new
         @started = false
-        @start_mtx : Mutex
-        @start_mtx = Mutex.new(:reentrant)
+        @start_mtx : CML::Sync::Mutex
+        @start_mtx = CML::Sync::Mutex.new(:reentrant)
 
         def initialize(@instream, @nack_evt = nil)
         end
@@ -517,6 +273,252 @@ module CML
           end
         end
       end
+
+      # Event that reads exactly n characters
+      class InputNEvent < Event({String, TextInstream})
+        @instream : TextInstream
+        @n : Int32
+        @nack_evt : Event(Nil)?
+        @ready = AtomicFlag.new
+        @cancel_flag = AtomicFlag.new
+        @result = Slot(Exception | {String, TextInstream}).new
+        @started = false
+        @start_mtx : CML::Sync::Mutex
+        @start_mtx = CML::Sync::Mutex.new(:reentrant)
+
+        def initialize(@instream, @n, @nack_evt = nil)
+        end
+
+        def poll : EventStatus({String, TextInstream})
+          if @ready.get
+            return Enabled({String, TextInstream}).new(priority: 0, value: fetch_result)
+          end
+
+          Blocked({String, TextInstream}).new do |tid, next_fn|
+            start_once(tid)
+            next_fn.call
+          end
+        end
+
+        protected def force_impl : EventGroup({String, TextInstream})
+          BaseGroup({String, TextInstream}).new(-> : EventStatus({String, TextInstream}) { poll })
+        end
+
+        private def start_once(tid : TransactionId)
+          should_start = false
+
+          @start_mtx.synchronize do
+            unless @started
+              @started = true
+              should_start = true
+            end
+          end
+
+          return unless should_start
+
+          ::spawn do
+            begin
+              delivered = false
+              loop do
+                break if @cancel_flag.get
+                readable = wait_until_readable
+                unless readable
+                  # timeout, continue waiting
+                  next
+                end
+                io = @instream.io
+                builder = String::Builder.new
+                remaining = @n
+                while remaining > 0
+                  ch = io.read_char
+                  break if ch.nil?
+                  builder << ch
+                  remaining -= 1
+                end
+                str = builder.to_s
+                new_stream = TextInstream.new(io)
+                deliver({str, new_stream}, tid)
+                delivered = true
+                break
+              end
+
+              # If we never delivered (cancelled before readable)
+              unless delivered
+                # Deliver empty string on cancellation
+                new_stream = TextInstream.new(@instream.io)
+                deliver({"", new_stream}, tid)
+              end
+            rescue ex : Exception
+              deliver(ex, tid)
+            end
+          end
+
+          start_nack_watcher(tid)
+        end
+
+        private def start_nack_watcher(tid : TransactionId)
+          if nack = @nack_evt
+            ::spawn do
+              CML.sync(nack)
+              @cancel_flag.set(true)
+              tid.try_cancel
+            end
+          end
+        end
+
+        private def wait_until_readable : Bool
+          return false if @cancel_flag.get
+
+          if @instream.io.responds_to?(:wait_readable)
+            begin
+              readable = @instream.io.wait_readable(50.milliseconds, raise_if_closed: false)
+              return readable
+            rescue ex
+              return true
+            end
+          end
+
+          true
+        end
+
+        private def deliver(value : Exception | {String, TextInstream}, tid : TransactionId)
+          return if @cancel_flag.get
+          @result.set(value)
+          @ready.set(true)
+          tid.try_commit_and_resume
+        end
+
+        private def fetch_result : {String, TextInstream}
+          case val = @result.get
+          when Exception
+            raise val
+          else
+            val
+          end
+        end
+      end
+
+      # Event that reads available input (non-blocking)
+      class InputEvent < Event({String, TextInstream})
+        @instream : TextInstream
+        @nack_evt : Event(Nil)?
+        @ready = AtomicFlag.new
+        @cancel_flag = AtomicFlag.new
+        @result = Slot(Exception | {String, TextInstream}).new
+        @started = false
+        @start_mtx : CML::Sync::Mutex
+        @start_mtx = CML::Sync::Mutex.new(:reentrant)
+
+        def initialize(@instream, @nack_evt = nil)
+        end
+
+        def poll : EventStatus({String, TextInstream})
+          if @ready.get
+            return Enabled({String, TextInstream}).new(priority: 0, value: fetch_result)
+          end
+
+          Blocked({String, TextInstream}).new do |tid, next_fn|
+            start_once(tid)
+            next_fn.call
+          end
+        end
+
+        protected def force_impl : EventGroup({String, TextInstream})
+          BaseGroup({String, TextInstream}).new(-> : EventStatus({String, TextInstream}) { poll })
+        end
+
+        private def start_once(tid : TransactionId)
+          should_start = false
+
+          @start_mtx.synchronize do
+            unless @started
+              @started = true
+              should_start = true
+            end
+          end
+
+          return unless should_start
+
+          ::spawn do
+            begin
+              delivered = false
+              loop do
+                break if @cancel_flag.get
+                readable = wait_until_readable
+                unless readable
+                  # timeout, continue waiting
+                  next
+                end
+                io = @instream.io
+                bytes = Bytes.empty
+                if io.responds_to?(:peek)
+                  peek_bytes = io.peek
+                  if peek_bytes && !peek_bytes.empty?
+                    bytes = Bytes.new(peek_bytes.size)
+                    io.read_fully(bytes)
+                  end
+                end
+                str = bytes.empty? ? "" : String.new(bytes)
+                new_stream = TextInstream.new(io)
+                deliver({str, new_stream}, tid)
+                delivered = true
+                break
+              end
+
+              # If we never delivered (cancelled before readable)
+              unless delivered
+                new_stream = TextInstream.new(@instream.io)
+                deliver({"", new_stream}, tid)
+              end
+            rescue ex : Exception
+              deliver(ex, tid)
+            end
+          end
+
+          start_nack_watcher(tid)
+        end
+
+        private def start_nack_watcher(tid : TransactionId)
+          if nack = @nack_evt
+            ::spawn do
+              CML.sync(nack)
+              @cancel_flag.set(true)
+              tid.try_cancel
+            end
+          end
+        end
+
+        private def wait_until_readable : Bool
+          return false if @cancel_flag.get
+
+          if @instream.io.responds_to?(:wait_readable)
+            begin
+              readable = @instream.io.wait_readable(50.milliseconds, raise_if_closed: false)
+              return readable
+            rescue ex
+              return true
+            end
+          end
+
+          true
+        end
+
+        private def deliver(value : Exception | {String, TextInstream}, tid : TransactionId)
+          return if @cancel_flag.get
+          @result.set(value)
+          @ready.set(true)
+          tid.try_commit_and_resume
+        end
+
+        private def fetch_result : {String, TextInstream}
+          case val = @result.get
+          when Exception
+            raise val
+          else
+            val
+          end
+        end
+      end
     end
 
     # Event constructors for text streams
@@ -555,39 +557,39 @@ module CML
     end
 
     # Read up to n characters.
-    def read_n(n : Int32) : String
-      builder = String::Builder.new
-      remaining = n
-      while remaining > 0
+    def read_n(n : Int32) : Slice(Char)
+      slice = Slice(Char).new(n)
+      count = 0
+      while count < n
         ch = io.read_char
         break if ch.nil?
-        builder << ch
-        remaining -= 1
+        slice[count] = ch
+        count += 1
       end
-      builder.to_s
+      slice[0, count]
     end
 
     # Read all available characters (non-blocking).
-    def read_available : String
-      # TODO: implement non-blocking read
-      builder = String::Builder.new
-      loop do
-        ch = io.read_char
-        break if ch.nil?
-        builder << ch
-      end
-      builder.to_s
+    def read_available : Slice(Char)
+      # Read available bytes without blocking
+      bytes = io.read_available
+      return Slice(Char).new(0) if bytes.empty?
+      # Decode UTF-8 bytes to characters
+      # Note: this may raise on invalid UTF-8, but we assume valid text stream
+      str = String.new(bytes)
+      # Convert String to Slice(Char)
+      Slice(Char).new(str.size) { |i| str[i] }
     end
 
     # Read all remaining characters until EOF.
-    def read_all : String
-      builder = String::Builder.new
+    def read_all : Slice(Char)
+      chars = [] of Char
       loop do
         ch = io.read_char
         break if ch.nil?
-        builder << ch
+        chars << ch
       end
-      builder.to_s
+      Slice(Char).new(chars.size) { |i| chars[i] }
     end
   end
 end

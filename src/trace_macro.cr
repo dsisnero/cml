@@ -13,7 +13,7 @@ module CML
   # All methods are no-ops when compiled without `-Dtrace`.
   class Tracer
     @@output : IO = STDOUT
-    @@mutex = Mutex.new(:reentrant)
+    @@mutex = CML::Sync::Mutex.new(:reentrant)
 
     # Filter sets (thread-safe via mutex)
     @@filter_tags = Set(String).new

@@ -107,7 +107,7 @@ module CML
           Enabled(T).new(priority: status.priority, value: value)
         when Blocked({T, IVar(State(T))})
           inner_block = status.block_fn
-          state_var = @state_var
+
           Blocked(T).new do |tid, next_fn|
             inner_block.call(tid, next_fn)
           end

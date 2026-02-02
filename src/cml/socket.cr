@@ -9,8 +9,8 @@ module CML
     # Values are platform-specific; these are common Linux/macOS values.
     module Flags
       NONE = 0
-      {% if flag?(:linux) || flag?(:darwin) %}
-        # Linux and macOS common values
+      {% if flag?(:linux) %}
+        # Linux values
         MSG_OOB       =   0x01 # Process out-of-band data
         MSG_PEEK      =   0x02 # Peek at incoming message
         MSG_DONTROUTE =   0x04 # Don't use local routing
@@ -27,6 +27,25 @@ module CML
         MSG_ERRQUEUE  = 0x2000 # Fetch message from error queue
         MSG_NOSIGNAL  = 0x4000 # Do not generate SIGPIPE
         MSG_MORE      = 0x8000 # Sender will send more
+      {% elsif flag?(:darwin) %}
+        # macOS values (from sys/socket.h)
+        MSG_OOB       =    0x01 # Process out-of-band data
+        MSG_PEEK      =    0x02 # Peek at incoming message
+        MSG_DONTROUTE =    0x04 # Don't use local routing
+        MSG_EOR       =    0x08 # End of record
+        MSG_TRUNC     =   0x10 # Data discarded before delivery
+        MSG_CTRUNC    =   0x20 # Control data lost before delivery
+        MSG_WAITALL   =   0x40 # Wait for full request or error
+        MSG_DONTWAIT  =   0x80 # Non-blocking IO
+        MSG_EOF       =  0x100 # Data completes connection
+        MSG_WAITSTREAM = 0x200 # Wait up to full request.. may return partial
+        MSG_FLUSH     =  0x400 # Start of 'hold' seq; dump so_temp (deprecated)
+        MSG_HOLD      =  0x800 # Hold frag in so_temp (deprecated)
+        MSG_SEND      = 0x1000 # Send the packet in so_temp (deprecated)
+        MSG_HAVEMORE  = 0x2000 # Data ready to be read
+        MSG_RCVMORE   = 0x4000 # Data remains in current pkt
+        MSG_NEEDSA    = 0x10000 # Fail receive if socket address cannot be allocated
+        MSG_NOSIGNAL  = 0x80000 # Do not generate SIGPIPE on EOF
       {% elsif flag?(:windows) %}
         # Windows values (from winsock2.h)
         MSG_OOB       =  0x01 # Process out-of-band data
@@ -116,16 +135,16 @@ module CML
         end
       end
 
-      private def wait_until_readable(io : ::IO) : Bool
-        return false if @cancel_flag.get
-        begin
-          CML.sync(CML::PrimitiveIO.wait_readable_evt(io, @nack_evt))
-          true
-        rescue ex : Exception
-          # IO closed or nack triggered
-          false
-        end
+    private def wait_until_readable(io : ::IO) : Bool
+      return false if @cancel_flag.get
+      begin
+        CML.sync(CML::PrimitiveIO.wait_readable_evt(io, @nack_evt))
+        true
+      rescue ex : Exception
+        # IO closed or nack triggered
+        false
       end
+    end
 
       private def deliver(value : Exception | ::TCPSocket, tid : TransactionId)
         return if @cancel_flag.get
@@ -221,8 +240,8 @@ module CML
         else
           val
         end
+      end
     end
-  end
 
   # Unix domain socket accept
   class UnixAcceptEvent < Event(::UNIXSocket)
@@ -442,31 +461,33 @@ module CML
         ::spawn do
           begin
             CML.trace "RecvEvent.start_once loop", @socket, tag: "socket"
-            while wait_until_readable(@socket)
-              break if @cancel_flag.get
-              buffer = Bytes.new(@length)
-              read_bytes = if @flags == 0
-                             @socket.read(buffer)
-                           else
-                             # Use low-level recv with flags
-                             loop do
-                               bytes = LibC.recv(@socket.fd, buffer, @length, @flags)
-                               if bytes < 0
-                                 errno = Errno.value
-                                 if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK
-                                    # Not ready yet, wait a bit and retry
-                                    CML.trace "RecvEvent.inner wait", @socket, tag: "socket"
-                                    CML.sync(CML::PrimitiveIO.wait_readable_evt(@socket, @nack_evt))
-                                   next
-                                 else
-                                   raise IO::Error.from_os_error("recv", errno)
-                                 end
-                               end
-                               break bytes.to_i32
-                             end
-                           end
-              deliver(buffer[0, read_bytes], tid)
-              break
+            if @flags == 0
+              while wait_until_readable(@socket)
+                break if @cancel_flag.get
+                buffer = Bytes.new(@length)
+                read_bytes = @socket.read(buffer)
+                deliver(buffer[0, read_bytes], tid)
+                break
+              end
+            else
+              loop do
+                break if @cancel_flag.get
+                buffer = Bytes.new(@length)
+                bytes = LibC.recv(@socket.fd, buffer, @length, recv_flags)
+                if bytes < 0
+                  errno = Errno.value
+                  if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK
+                    # Not ready yet, wait and retry.
+                    CML.trace "RecvEvent.inner wait", @socket, tag: "socket"
+                    CML.sync(CML::PrimitiveIO.wait_readable_evt(@socket, @nack_evt))
+                    next
+                  else
+                    raise IO::Error.from_os_error("recv", errno)
+                  end
+                end
+                deliver(buffer[0, bytes.to_i32], tid)
+                break
+              end
             end
           rescue ex : Exception
             deliver(ex, tid)
@@ -478,14 +499,21 @@ module CML
 
       private def wait_until_readable(io : ::IO) : Bool
         return false if @cancel_flag.get
+
         begin
-          io.wait_readable(50.milliseconds, raise_if_closed: false)
+          CML.sync(CML::PrimitiveIO.wait_readable_evt(io, @nack_evt))
           true
-        rescue ex : IO::TimeoutError
+        rescue ex : Exception
           false
-        rescue
-          true
         end
+      end
+
+      private def recv_flags : Int32
+        flags = @flags
+        {% if CML::Socket::Flags.has_constant?(:MSG_DONTWAIT) %}
+          flags |= CML::Socket::Flags::MSG_DONTWAIT
+        {% end %}
+        flags
       end
 
       private def start_nack_watcher(tid : TransactionId)
@@ -562,6 +590,7 @@ module CML
         ::spawn do
           begin
             bytes_written = 0
+            CML.trace "SendEvent.start_once loop", @socket, tag: "socket"
             while wait_until_writable(@socket) && bytes_written < @data.size
               break if @cancel_flag.get
               slice = @data[bytes_written..]
@@ -570,6 +599,7 @@ module CML
                              slice.size
                            else
                              # Use low-level send with flags
+                             CML.trace "SendEvent.write flags", @flags, tag: "socket"
                              bytes = LibC.send(@socket.fd, slice, slice.size, @flags)
                              if bytes < 0
                                errno = Errno.value
@@ -578,7 +608,9 @@ module CML
                              bytes.to_i32
                            end
               bytes_written += bytes_sent
+              CML.trace "SendEvent.wrote", bytes_sent, bytes_written, @data.size, tag: "socket"
             end
+            CML.trace "SendEvent.done", bytes_written, tag: "socket"
             deliver(bytes_written, tid)
           rescue ex : Exception
             deliver(ex, tid)
@@ -590,13 +622,12 @@ module CML
 
       private def wait_until_writable(io : ::IO) : Bool
         return false if @cancel_flag.get
+
         begin
-          io.wait_writable(50.milliseconds)
+          CML.sync(CML::PrimitiveIO.wait_writable_evt(io, @nack_evt))
           true
-        rescue ex : IO::TimeoutError
+        rescue ex : Exception
           false
-        rescue
-          true
         end
       end
 
@@ -780,9 +811,9 @@ module CML
             begin
               while wait_until_readable(@socket)
                 break if @cancel_flag.get
-                data_raw, addr = @socket.receive
-                data_bytes = data_raw.is_a?(Bytes) ? data_raw.as(Bytes) : data_raw.to_slice
-                deliver({data_bytes, addr}, tid)
+                buffer = Bytes.new(@max)
+                bytes_read, addr = @socket.receive(buffer)
+                deliver({buffer[0, bytes_read], addr}, tid)
                 break
               end
             rescue ex : Exception
@@ -793,16 +824,16 @@ module CML
           start_nack_watcher(tid)
         end
 
-      private def wait_until_readable(io : ::IO) : Bool
-        return false if @cancel_flag.get
-        begin
-          CML.sync(CML::PrimitiveIO.wait_readable_evt(io, @nack_evt))
-          true
-        rescue ex : Exception
-          # If wait_readable_evt raises (e.g., IO closed), return true to let the loop handle it
-          true
+        private def wait_until_readable(io : ::IO) : Bool
+          return false if @cancel_flag.get
+          begin
+            CML.sync(CML::PrimitiveIO.wait_readable_evt(io, @nack_evt))
+            true
+          rescue ex : Exception
+            # If wait_readable_evt raises (e.g., IO closed), return true to let the loop handle it
+            true
+          end
         end
-      end
 
         private def start_nack_watcher(tid : TransactionId)
           if nack = @nack_evt
