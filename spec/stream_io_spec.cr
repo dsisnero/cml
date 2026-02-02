@@ -155,13 +155,15 @@ describe "CML::StreamIO" do
 
   it "output writes text data" do
     io = IO::Memory.new
-    outstream = CML::StreamIO.open_text_out(io)
-    outstream = CML::StreamIO.output(outstream, "hi")
-    outstream = CML::StreamIO.output1(outstream, '!')
-    CML::StreamIO.flush_out(outstream)
-    io.to_s.should eq("hi!")
-  ensure
-    io.close
+    begin
+      outstream = CML::StreamIO.open_text_out(io)
+      outstream = CML::StreamIO.output(outstream, "hi")
+      outstream = CML::StreamIO.output1(outstream, '!')
+      CML::StreamIO.flush_out(outstream)
+      io.to_s.should eq("hi!")
+    ensure
+      io.close
+    end
   end
 
   # Note: choose requires all events to have the same type parameter,
