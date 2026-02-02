@@ -104,23 +104,26 @@ module CML
 
       private def wait_until_readable : Bool
         CML.trace "WaitReadableEvent.wait_until_readable start", tag: "prim_io"
-        return false if @cancel_flag.get_with_acquire
 
-        if @io.responds_to?(:wait_readable)
-          begin
-            # Wait indefinitely (or until IO closed)
-            CML.trace "WaitReadableEvent.wait_until_readable calling", tag: "prim_io"
-            result = @io.wait_readable(raise_if_closed: false)
-            CML.trace "WaitReadableEvent.wait_until_readable result", result, tag: "prim_io"
-            return result
-          rescue
-            CML.trace "WaitReadableEvent.wait_until_readable rescued", tag: "prim_io"
+        loop do
+          return false if @cancel_flag.get_with_acquire
+
+          if @io.responds_to?(:wait_readable)
+            begin
+              # Use a short timeout so cancellation can be observed.
+              CML.trace "WaitReadableEvent.wait_until_readable calling", tag: "prim_io"
+              result = @io.wait_readable(50.milliseconds, raise_if_closed: false)
+              CML.trace "WaitReadableEvent.wait_until_readable result", result, tag: "prim_io"
+              return true if result
+            rescue
+              CML.trace "WaitReadableEvent.wait_until_readable rescued", tag: "prim_io"
+              return true
+            end
+          else
+            CML.trace "WaitReadableEvent.wait_until_readable fallback true", tag: "prim_io"
             return true
           end
         end
-
-        CML.trace "WaitReadableEvent.wait_until_readable fallback true", tag: "prim_io"
-        true
       end
 
       private def start_nack_watcher(tid : TransactionId)
@@ -193,18 +196,19 @@ module CML
       end
 
       private def wait_until_writable : Bool
-        return false if @cancel_flag.get_with_acquire
+        loop do
+          return false if @cancel_flag.get_with_acquire
 
-        if @io.responds_to?(:wait_writable)
-          begin
-            # Wait indefinitely (or until IO closed)
-            return @io.wait_writable
-          rescue
+          if @io.responds_to?(:wait_writable)
+            begin
+              return true if @io.wait_writable(50.milliseconds)
+            rescue
+              return true
+            end
+          else
             return true
           end
         end
-
-        true
       end
 
       private def start_nack_watcher(tid : TransactionId)
@@ -654,24 +658,26 @@ module CML
 
       private def wait_readable(tid : TransactionId)
         CML.trace "DirectWaitReadableEvent.wait_readable start", @io.class, tag: "prim_io"
-        return if @cancel_flag.get_with_acquire
+        loop do
+          return if @cancel_flag.get_with_acquire
 
-        # Prefer IO's wait_readable when available; it integrates with evented IO.
-        if @io.responds_to?(:wait_readable)
-          CML.trace "DirectWaitReadableEvent.wait_readable generic", tag: "prim_io"
-          @io.wait_readable(raise_if_closed: false)
-        elsif @io.is_a?(::Socket)
-          CML.trace "DirectWaitReadableEvent.wait_readable socket", tag: "prim_io"
-          Crystal::EventLoop.current.wait_readable(@io.as(::Socket))
-        elsif @io.is_a?(IO::FileDescriptor)
-          CML.trace "DirectWaitReadableEvent.wait_readable fd", tag: "prim_io"
-          Crystal::EventLoop.current.wait_readable(@io.as(Crystal::System::FileDescriptor))
-        else
-          CML.trace "DirectWaitReadableEvent.wait_readable no method", tag: "prim_io"
+          # Prefer IO's wait_readable when available; it integrates with evented IO.
+          if @io.responds_to?(:wait_readable)
+            CML.trace "DirectWaitReadableEvent.wait_readable generic", tag: "prim_io"
+            return deliver(nil, tid) if @io.wait_readable(50.milliseconds, raise_if_closed: false)
+          elsif @io.is_a?(::Socket)
+            CML.trace "DirectWaitReadableEvent.wait_readable socket", tag: "prim_io"
+            Crystal::EventLoop.current.wait_readable(@io.as(::Socket))
+            return deliver(nil, tid)
+          elsif @io.is_a?(IO::FileDescriptor)
+            CML.trace "DirectWaitReadableEvent.wait_readable fd", tag: "prim_io"
+            Crystal::EventLoop.current.wait_readable(@io.as(Crystal::System::FileDescriptor))
+            return deliver(nil, tid)
+          else
+            CML.trace "DirectWaitReadableEvent.wait_readable no method", tag: "prim_io"
+            return deliver(nil, tid)
+          end
         end
-
-        CML.trace "DirectWaitReadableEvent.wait_readable done", tag: "prim_io"
-        deliver(nil, tid)
       end
 
       private def start_nack_watcher(tid : TransactionId)
@@ -749,18 +755,22 @@ module CML
       end
 
       private def wait_writable(tid : TransactionId)
-        return if @cancel_flag.get_with_acquire
+        loop do
+          return if @cancel_flag.get_with_acquire
 
-        # Prefer IO's wait_writable when available; it integrates with evented IO.
-        if @io.responds_to?(:wait_writable)
-          @io.wait_writable
-        elsif @io.is_a?(::Socket)
-          Crystal::EventLoop.current.wait_writable(@io.as(::Socket))
-        elsif @io.is_a?(IO::FileDescriptor)
-          Crystal::EventLoop.current.wait_writable(@io.as(Crystal::System::FileDescriptor))
+          # Prefer IO's wait_writable when available; it integrates with evented IO.
+          if @io.responds_to?(:wait_writable)
+            return deliver(nil, tid) if @io.wait_writable(50.milliseconds)
+          elsif @io.is_a?(::Socket)
+            Crystal::EventLoop.current.wait_writable(@io.as(::Socket))
+            return deliver(nil, tid)
+          elsif @io.is_a?(IO::FileDescriptor)
+            Crystal::EventLoop.current.wait_writable(@io.as(Crystal::System::FileDescriptor))
+            return deliver(nil, tid)
+          else
+            return deliver(nil, tid)
+          end
         end
-
-        deliver(nil, tid)
       end
 
       private def start_nack_watcher(tid : TransactionId)
