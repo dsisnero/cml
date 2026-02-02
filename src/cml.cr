@@ -1648,6 +1648,7 @@ end
 require "./cml/time_compat"
 require "./cml/cleanup"
 require "./cml/ivar"
+require "./cml/result"
 require "./cml/mvar"
 require "./cml/mailbox"
 require "./cml/barrier"
