@@ -656,17 +656,16 @@ module CML
         CML.trace "DirectWaitReadableEvent.wait_readable start", @io.class, tag: "prim_io"
         return if @cancel_flag.get_with_acquire
 
-        # Use EventLoop's wait_readable method directly for maximum performance
-        if @io.is_a?(::Socket)
+        # Prefer IO's wait_readable when available; it integrates with evented IO.
+        if @io.responds_to?(:wait_readable)
+          CML.trace "DirectWaitReadableEvent.wait_readable generic", tag: "prim_io"
+          @io.wait_readable(raise_if_closed: false)
+        elsif @io.is_a?(::Socket)
           CML.trace "DirectWaitReadableEvent.wait_readable socket", tag: "prim_io"
           Crystal::EventLoop.current.wait_readable(@io.as(::Socket))
         elsif @io.is_a?(IO::FileDescriptor)
           CML.trace "DirectWaitReadableEvent.wait_readable fd", tag: "prim_io"
           Crystal::EventLoop.current.wait_readable(@io.as(Crystal::System::FileDescriptor))
-        elsif @io.responds_to?(:wait_readable)
-          # Fall back to IO's wait_readable method for other IO types
-          CML.trace "DirectWaitReadableEvent.wait_readable generic", tag: "prim_io"
-          @io.wait_readable(raise_if_closed: false)
         else
           CML.trace "DirectWaitReadableEvent.wait_readable no method", tag: "prim_io"
         end
@@ -752,14 +751,13 @@ module CML
       private def wait_writable(tid : TransactionId)
         return if @cancel_flag.get_with_acquire
 
-        # Use EventLoop's wait_writable method directly for maximum performance
-        if @io.is_a?(::Socket)
+        # Prefer IO's wait_writable when available; it integrates with evented IO.
+        if @io.responds_to?(:wait_writable)
+          @io.wait_writable
+        elsif @io.is_a?(::Socket)
           Crystal::EventLoop.current.wait_writable(@io.as(::Socket))
         elsif @io.is_a?(IO::FileDescriptor)
           Crystal::EventLoop.current.wait_writable(@io.as(Crystal::System::FileDescriptor))
-        elsif @io.responds_to?(:wait_writable)
-          # Fall back to IO's wait_writable method for other IO types
-          @io.wait_writable
         end
 
         deliver(nil, tid)
@@ -798,11 +796,11 @@ module CML
 
     # Backend selection logic
     @@backend : Backend?
-    
+
     # Singleton backend instances (initialized lazily)
     @@event_loop_backend : EventLoopBackend?
     @@io_evented_backend : IOEventedBackend?
-    
+
     # Mutex for thread-safe backend initialization
     @@backend_init_mtx = CML::Sync.mutex
 
@@ -812,7 +810,7 @@ module CML
       if custom = @@backend
         return custom
       end
-      
+
       # Otherwise, select optimal backend based on current context
       select_backend
     end
@@ -821,26 +819,26 @@ module CML
     def self.backend=(backend : Backend?)
       @@backend = backend
     end
-    
+
     # Get the EventLoopBackend singleton (thread-safe initialization)
     private def self.event_loop_backend : EventLoopBackend
       # Double-checked locking for thread-safe lazy initialization
       if backend = @@event_loop_backend
         return backend
       end
-      
+
       @@backend_init_mtx.synchronize do
         @@event_loop_backend ||= EventLoopBackend.new
       end
     end
-    
+
     # Get the IOEventedBackend singleton (thread-safe initialization)
     private def self.io_evented_backend : IOEventedBackend
       # Double-checked locking for thread-safe lazy initialization
       if backend = @@io_evented_backend
         return backend
       end
-      
+
       @@backend_init_mtx.synchronize do
         @@io_evented_backend ||= IOEventedBackend.new
       end
@@ -876,7 +874,9 @@ module CML
       if custom = @@backend
         return custom
       end
-      
+
+      # EventLoopBackend currently has a bug with pipes after blocking read.
+      # Use compatibility backend for non-socket IO until DirectWaitReadableEvent is fixed.
       # EventLoopBackend currently has a bug with pipes after blocking read.
       # Use compatibility backend for non-socket IO until DirectWaitReadableEvent is fixed.
       if io.is_a?(::Socket) && in_parallel_context?
