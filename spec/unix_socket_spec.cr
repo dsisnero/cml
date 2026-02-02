@@ -15,7 +15,7 @@ describe "CML Unix socket events" do
       received = Atomic(Bool).new(false)
 
       ::spawn do
-        socket = CML.sync(CML::Socket.accept_evt(server))
+        socket, _addr = CML.sync(CML::Socket.accept_evt(server))
         msg = CML.sync(CML::Socket.recv_evt(socket, 5))
         received.set(String.new(msg) == "ping\n")
         CML.sync(CML::Socket.send_evt(socket, "pong\n".to_slice))
@@ -48,7 +48,7 @@ describe "CML Unix socket events" do
 
       ::spawn do
         # Use accept_evt with wrapper
-        socket = CML.sync(CML::Socket.accept_evt(server))
+        socket, _addr = CML.sync(CML::Socket.accept_evt(server))
         socket.should be_a(::UNIXSocket)
         msg = CML.sync(CML::Socket.recv_evt(socket, 5))
         received.set(String.new(msg) == "test\n")

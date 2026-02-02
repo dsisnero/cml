@@ -16,6 +16,7 @@ describe "CML UDP socket events" do
 
     ::spawn do
       data, addr = CML.sync(CML::Socket::UDP.recv_evt(server, 64))
+      addr = addr.as(Socket::IPAddress)
       received.set(String.new(data) == "ping")
       CML.sync(CML::Socket::UDP.send_evt(server, "pong".to_slice, addr.address, addr.port))
     end

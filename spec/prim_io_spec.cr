@@ -78,7 +78,7 @@ describe CML::PrimitiveIO do
 
     ::spawn do
       accept_result = CML.sync(CML.choose(
-        CML.wrap(CML::Socket.accept_evt(server)) { |sock| sock.as(::TCPSocket | Symbol) },
+        CML.wrap(CML::Socket.accept_evt(server)) { |(sock, _addr)| sock.as(::TCPSocket | Symbol) },
         CML.wrap(CML.timeout(2.seconds)) { :timeout.as(::TCPSocket | Symbol) },
       ))
       socket = case accept_result
@@ -108,16 +108,12 @@ describe CML::PrimitiveIO do
       socket.close
     end
 
+    client = TCPSocket.new
     connect_result = CML.sync(CML.choose(
-      CML.wrap(CML::Socket.connect_evt("127.0.0.1", port)) { |sock| sock.as(::TCPSocket | Symbol) },
-      CML.wrap(CML.timeout(2.seconds)) { :timeout.as(::TCPSocket | Symbol) },
+      CML.wrap(CML::Socket.connect_evt(client, Socket::IPAddress.new("127.0.0.1", port))) { |res| res.as(Nil | Symbol) },
+      CML.wrap(CML.timeout(2.seconds)) { :timeout.as(Nil | Symbol) },
     ))
-    client = case connect_result
-             when ::TCPSocket
-               connect_result
-             else
-               raise "connect timeout"
-             end
+    raise "connect timeout" if connect_result == :timeout
 
     send_result = CML.sync(CML.choose(
       CML.wrap(CML::Socket.send_evt(client, "ping".to_slice)) { |count| count.as(Int32 | Symbol) },

@@ -110,7 +110,7 @@ describe "CML socket wrapper factory" do
 
       # This should work because accept_evt has overload for PassiveSocket
       event = CML::Socket.accept_evt(server)
-      socket = CML.sync(event)
+      socket, _addr = CML.sync(event)
       socket.should be_a(::TCPSocket)
       socket.close
       server.close
@@ -152,6 +152,30 @@ describe "CML socket wrapper factory" do
 
       client.close
       server.close
+    end
+
+    it "supports vec/arr aliases for connected datagram sockets" do
+      left, right = CML::Socket.socket_pair(:inet, :dgram)
+      left = left.as(CML::Socket::DatagramSocket)
+      right = right.as(CML::Socket::DatagramSocket)
+
+      data = "ping".to_slice
+      bytes_sent = CML.sync(CML::Socket::UDP.send_vec_evt(left, data))
+      bytes_sent.should eq(data.size)
+
+      received = CML.sync(CML::Socket::UDP.recv_vec_evt(right, data.size))
+      String.new(received).should eq("ping")
+
+      buffer = Bytes.new(4)
+      bytes_sent = CML.sync(CML::Socket::UDP.send_vec_evt(left, data))
+      bytes_sent.should eq(data.size)
+
+      bytes_read = CML.sync(CML::Socket::UDP.recv_arr_evt(right, buffer))
+      bytes_read.should eq(4)
+      String.new(buffer).should eq("ping")
+
+      left.close
+      right.close
     end
   end
 end

@@ -39,7 +39,7 @@ describe "CML socket flag support" do
 
       ::spawn do
         begin
-          socket = CML.sync(CML::Socket.accept_evt(server))
+          socket, _addr = CML.sync(CML::Socket.accept_evt(server))
           # Send data to client
           CML.sync(CML::Socket.send_evt(socket, "hello".to_slice))
           socket.close
@@ -48,7 +48,8 @@ describe "CML socket flag support" do
       end
       Fiber.yield
 
-      client = CML.sync(CML::Socket.connect_evt("127.0.0.1", port))
+      client = TCPSocket.new
+      CML.sync(CML::Socket.connect_evt(client, Socket::IPAddress.new("127.0.0.1", port)))
       # Peek at data without consuming
       peeked = CML.sync(CML::Socket.recv_evt(client, 5, CML::Socket::Flags::MSG_PEEK))
       String.new(peeked).should eq("hello")
@@ -71,7 +72,7 @@ describe "CML socket flag support" do
 
       ::spawn do
         begin
-          socket = CML.sync(CML::Socket.accept_evt(server))
+          socket, _addr = CML.sync(CML::Socket.accept_evt(server))
           msg = CML.sync(CML::Socket.recv_evt(socket, 4))
           String.new(msg).should eq("test")
           socket.close
@@ -80,7 +81,8 @@ describe "CML socket flag support" do
       end
       Fiber.yield
 
-      client = CML.sync(CML::Socket.connect_evt("127.0.0.1", port))
+      client = TCPSocket.new
+      CML.sync(CML::Socket.connect_evt(client, Socket::IPAddress.new("127.0.0.1", port)))
       # Send with MSG_DONTROUTE flag (may be ignored but shouldn't crash)
       bytes_sent = CML.sync(CML::Socket.send_evt(client, "test".to_slice, CML::Socket::Flags::MSG_DONTROUTE))
       bytes_sent.should eq(4)
@@ -99,7 +101,7 @@ describe "CML socket flag support" do
       received = Atomic(Bool).new(false)
       ::spawn do
         begin
-          socket = CML.sync(CML::Socket.accept_evt(server))
+          socket, _addr = CML.sync(CML::Socket.accept_evt(server))
           msg = CML.sync(CML::Socket.recv_evt(socket, 8))
           received.set(String.new(msg) == "backward")
           socket.close
@@ -108,7 +110,8 @@ describe "CML socket flag support" do
       end
       Fiber.yield
 
-      client = CML.sync(CML::Socket.connect_evt("127.0.0.1", port))
+      client = TCPSocket.new
+      CML.sync(CML::Socket.connect_evt(client, Socket::IPAddress.new("127.0.0.1", port)))
       bytes_sent = CML.sync(CML::Socket.send_evt(client, "backward".to_slice))
       bytes_sent.should eq(8)
       CML.sync(CML.timeout(10.milliseconds)) # yield to allow server to receive
