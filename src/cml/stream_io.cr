@@ -66,6 +66,10 @@ module CML
 
     # Text input stream (Char elements, String vectors)
     class TextInstream < Instream(Char)
+      def raw_io : IO
+        io
+      end
+
       # Event that reads one character
       class Input1Event < Event({Char, TextInstream}?)
         @instream : TextInstream
@@ -523,6 +527,10 @@ module CML
 
     # Text output stream (Char elements, String vectors)
     class TextOutstream < Outstream(Char)
+      def raw_io : IO
+        io
+      end
+
       def output(data : String) : TextOutstream
         io << data
         TextOutstream.new(io)
