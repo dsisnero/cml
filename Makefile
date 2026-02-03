@@ -1,4 +1,5 @@
 CRYSTAL ?= crystal
+CRYSTAL_SPEC_FLAGS ?= -Dpreview_mt -Dexecution_context
 CRYSTAL_CACHE_DIR ?= .crystal_cache
 export CRYSTAL_CACHE_DIR
 
@@ -19,7 +20,7 @@ SKIP_HOW_TO := \
 	understanding_cmls_non-blocking_architecture_036.cr \
 	understanding_cmls_non-blocking_architecture_037.cr
 
-.PHONY: build-examples clean build-system check-how-to-examples analyze-how-to clean-how-to
+.PHONY: build-examples clean build-system check-how-to-examples analyze-how-to clean-how-to spec
 
 build-examples: $(CRYSTAL_CACHE_DIR) $(EXAMPLE_BINS) build-system
 
@@ -78,3 +79,6 @@ clean:
 	@echo "Cleaning build_system directory..."
 	$(MAKE) -C $(EXAMPLE_DIR)/build_system clean
 	@echo "Note: Preserving extracted examples in $(HOW_TO_DIR) and other directories"
+
+spec: $(CRYSTAL_CACHE_DIR)
+	$(CRYSTAL) spec $(CRYSTAL_SPEC_FLAGS) spec --verbose
