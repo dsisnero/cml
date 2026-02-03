@@ -28,7 +28,7 @@ module CML
       end
 
       def input1 : {T, Instream(T, V)}?
-        return nil if @closed
+        return if @closed
         if @has_peek
           elem = @peek.not_nil!
           @has_peek = false
@@ -38,7 +38,7 @@ module CML
         end
 
         elem = @stream.read_one
-        return nil if elem.nil?
+        return if elem.nil?
         @pos += elem_size(elem)
         {elem, self}
       end
@@ -111,7 +111,7 @@ module CML
       def lookahead : T?
         return @peek if @has_peek
         elem = @stream.read_one
-        return nil if elem.nil?
+        return if elem.nil?
         @peek = elem
         @has_peek = true
         elem

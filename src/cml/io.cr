@@ -1,6 +1,5 @@
 module CML
   module IOEvents
-
     # Event that reads a full line (or nil on EOF) from an IO as an event.
     class ReadLineEvent < Event(String?)
       @io : ::IO
@@ -137,7 +136,7 @@ module CML
               break if @cancel_flag.get_with_acquire
               # Read chunk using PrimitiveIO backend
               chunk = CML.sync(CML::PrimitiveIO.read_evt(@io, 4096, @nack_evt))
-              break if chunk.empty?  # EOF
+              break if chunk.empty? # EOF
               buffer.write(chunk)
             end
             deliver(buffer.to_s, tid)
@@ -256,9 +255,8 @@ module CML
         case val = @result.get
         when Exception
           raise val
-        else
-          val
         end
+        nil
       end
     end
   end

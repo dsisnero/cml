@@ -29,7 +29,7 @@ module CML
 
       def input1 : {Char, Instream}?
         ch = read_char_blocking
-        return nil if ch.nil?
+        return if ch.nil?
         {ch, self}
       end
 
@@ -89,7 +89,7 @@ module CML
         if chan = @chan
           loop do
             val = CML.sync(chan.recv_evt)
-            return nil if val.nil? && line.empty?
+            return if val.nil? && line.empty?
             if val
               line << val
               if line.to_s.includes?('\n')
@@ -102,7 +102,7 @@ module CML
           end
         else
           rest = io.gets(chomp: false)
-          return nil if rest.nil? && line.empty?
+          return if rest.nil? && line.empty?
           line << rest if rest
           return {line.to_s, self}
         end
@@ -157,14 +157,14 @@ module CML
         end
         if chan = @chan
           CML.wrap(chan.recv_evt) do |val|
-            next nil if val.nil?
+            next if val.nil?
             @buffer = val
             input1
           end
         else
           stream = CML::StreamIO.open_text_in(@io.not_nil!)
           CML.wrap(CML::StreamIO.input1_evt(stream)) do |result|
-            next nil if result.nil?
+            next if result.nil?
             ch, _ = result
             {ch, self}
           end
@@ -235,7 +235,7 @@ module CML
       end
 
       private def read_char_blocking : Char?
-        return nil if @closed
+        return if @closed
         if @has_peek
           ch = @peek_char
           @has_peek = false
@@ -247,7 +247,7 @@ module CML
         end
         if chan = @chan
           val = CML.sync(chan.recv_evt)
-          return nil if val.nil?
+          return if val.nil?
           @buffer = val
           return shift_buffer_char
         end
@@ -270,9 +270,7 @@ module CML
           @buffer = ""
           return data
         end
-        if chan = @chan
-          return ""
-        end
+        return "" if @chan
         bytes = io.read_available
         bytes.empty? ? "" : String.new(bytes)
       end

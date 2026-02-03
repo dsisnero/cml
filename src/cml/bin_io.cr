@@ -24,7 +24,7 @@ module CML
 
       def input1 : {UInt8, Instream}?
         byte = read_byte_blocking
-        return nil if byte.nil?
+        return if byte.nil?
         {byte, self}
       end
 
@@ -91,14 +91,14 @@ module CML
         return CML.always(input1) if @buffer.size > 0
         if chan = @chan
           CML.wrap(chan.recv_evt) do |val|
-            next nil if val.nil?
+            next if val.nil?
             @buffer = val
             input1
           end
         else
           stream = CML::StreamIO.open_bin_in(@io.not_nil!)
           CML.wrap(CML::StreamIO.input1_evt(stream)) do |result|
-            next nil if result.nil?
+            next if result.nil?
             byte, _ = result
             {byte, self}
           end
@@ -158,7 +158,7 @@ module CML
       end
 
       private def read_byte_blocking : UInt8?
-        return nil if @closed
+        return if @closed
         if @buffer.size > 0
           byte = @buffer[0]
           @buffer = @buffer[1, @buffer.size - 1]
@@ -166,7 +166,7 @@ module CML
         end
         if chan = @chan
           val = CML.sync(chan.recv_evt)
-          return nil if val.nil?
+          return if val.nil?
           @buffer = val
           return read_byte_blocking
         end
@@ -192,9 +192,7 @@ module CML
           @buffer = Bytes.empty
           return data
         end
-        if chan = @chan
-          return Bytes.empty
-        end
+        return Bytes.empty if @chan
         bytes = io.read_available
         bytes.empty? ? Bytes.empty : bytes
       end

@@ -18,7 +18,7 @@ module CML
         @end_pos : Proc(Int64?),
         @verify_pos : Proc(Int64?),
         @close : Proc(Nil),
-        @io_desc : Proc(Nil)
+        @io_desc : Proc(Nil),
       )
       end
 
@@ -84,7 +84,7 @@ module CML
         @end_pos : Proc(Int64?),
         @verify_pos : Proc(Int64?),
         @close : Proc(Nil),
-        @io_desc : Proc(Nil)
+        @io_desc : Proc(Nil),
       )
       end
 

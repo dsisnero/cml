@@ -949,7 +949,7 @@ module CML
       # Blocking input operations matching CML_STREAM_IO.
       def input1 : {UInt8, BinInstream}?
         byte = io.read_byte
-        return nil if byte.nil?
+        return if byte.nil?
         {byte, BinInstream.new(io)}
       end
 
@@ -1140,7 +1140,7 @@ module CML
       # Blocking input operations matching CML_STREAM_IO.
       def input1 : {Char, TextInstream}?
         ch = io.read_char
-        return nil if ch.nil?
+        return if ch.nil?
         {ch, TextInstream.new(io)}
       end
 

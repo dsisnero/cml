@@ -147,9 +147,8 @@ module CML
         case val = @result.get
         when Exception
           raise val
-        else
-          val
         end
+        nil
       end
     end
 
@@ -232,9 +231,8 @@ module CML
         case val = @result.get
         when Exception
           raise val
-        else
-          val
         end
+        nil
       end
     end
 
@@ -701,9 +699,8 @@ module CML
         case val = @result.get
         when Exception
           raise val
-        else
-          val
         end
+        nil
       end
 
       private def fd_for(io : ::IO)
@@ -794,9 +791,8 @@ module CML
         case val = @result.get
         when Exception
           raise val
-        else
-          val
         end
+        nil
       end
 
       private def fd_for(io : ::IO)

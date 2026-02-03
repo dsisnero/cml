@@ -187,118 +187,120 @@ describe "CML EventLoop Compatibility" do
     end
   end
 
-{% if false %}
-  describe "Thread safety stress tests" do
-    it "handles concurrent reads from same IO in Parallel context" do
-      reader, writer = IO.pipe
-      lines = 10.times.map { |i| "line#{i}" }.to_a
-      # Write all lines
-      lines.each { |line| writer.puts(line) }
-      writer.flush
-      writer.close
+  {% if false %}
+    describe "Thread safety stress tests" do
+      it "handles concurrent reads from same IO in Parallel context" do
+        reader, writer = IO.pipe
+        lines = 10.times.map { |i| "line#{i}" }.to_a
+        # Write all lines
+        lines.each { |line| writer.puts(line) }
+        writer.flush
+        writer.close
 
-      # Create Parallel context with 4 threads
-      context = Fiber::ExecutionContext::Parallel.new("concurrent_read", maximum: 4)
-      results = Channel(String?).new(lines.size)
+        # Create Parallel context with 4 threads
+        context = Fiber::ExecutionContext::Parallel.new("concurrent_read", maximum: 4)
+        results = Channel(String?).new(lines.size)
 
-      lines.size.times do
+        lines.size.times do
+          context.spawn do
+            # Each fiber reads a line using CML
+            line = CML.sync(CML.read_line_evt(reader))
+            results.send(line)
+          end
+        end
+
+        # Collect results
+        received = Array(String?).new(lines.size)
+        lines.size.times { received << results.receive }
+        received = received.compact.sort
+        expected = lines.map { |line| "#{line}\n" }.sort
+        received.should eq(expected)
+      ensure
+        reader.try &.close
+        writer.try &.close
+      end
+
+      it "handles concurrent writes to same IO in Parallel context" do
+        reader, writer = IO.pipe
+        messages = 10.times.map { |i| "msg#{i}" }.to_a
+        context = Fiber::ExecutionContext::Parallel.new("concurrent_write", maximum: 4)
+        done = Channel(Nil).new(messages.size)
+
+        messages.each do |msg|
+          context.spawn do
+            CML.sync(CML.write_evt(writer, msg.to_slice))
+            done.send(nil)
+          end
+        end
+
+        messages.size.times { done.receive }
+        writer.close
+
+        # Read all data
+        data = reader.gets_to_end
+        messages.each do |msg|
+          data.should contain(msg)
+        end
+      ensure
+        reader.try &.close
+        writer.try &.close
+      end
+
+      it "propagates IO errors across threads" do
+        reader, writer = IO.pipe
+        writer.close
+        # After writer close, reader will get EOF (nil)
+        context = Fiber::ExecutionContext::Parallel.new("error_prop", maximum: 2)
+        result = Channel(String?).new(1)
         context.spawn do
-          # Each fiber reads a line using CML
           line = CML.sync(CML.read_line_evt(reader))
-          results.send(line)
+          result.send(line)
         end
+        received = result.receive
+        received.should be_nil # EOF
+
+
+      ensure
+        reader.try &.close
+        writer.try &.close
       end
 
-      # Collect results
-      received = Array(String?).new(lines.size)
-      lines.size.times { received << results.receive }
-      received = received.compact.sort
-      expected = lines.map { |line| "#{line}\n" }.sort
-      received.should eq(expected)
-    ensure
-      reader.try &.close
-      writer.try &.close
-    end
+      it "handles cancellation with nack across threads" do
+        reader, writer = IO.pipe
+        context = Fiber::ExecutionContext::Parallel.new("cancel_test", maximum: 2)
+        cancelled = Channel(Bool).new(1)
 
-    it "handles concurrent writes to same IO in Parallel context" do
-      reader, writer = IO.pipe
-      messages = 10.times.map { |i| "msg#{i}" }.to_a
-      context = Fiber::ExecutionContext::Parallel.new("concurrent_write", maximum: 4)
-      done = Channel(Nil).new(messages.size)
+        # Create a choose between read and timeout with nack
+        read_event = CML.read_evt(reader, 4)
+        timeout_event = CML.timeout(10.milliseconds)
 
-      messages.each do |msg|
+        nack_called = false
+        read_event_with_nack = CML.with_nack do |nack_evt|
+          spawn do
+            CML.sync(nack_evt)
+            nack_called = true
+          end
+          read_event
+        end
+
+        read_event_wrapped = CML.wrap(read_event_with_nack) { |bytes| bytes.as(Bytes | Nil) }
+        timeout_event_wrapped = CML.wrap(timeout_event) { |nil_val| nil_val.as(Bytes | Nil) }
+
+        event = CML.choose([read_event_wrapped, timeout_event_wrapped])
+
         context.spawn do
-          CML.sync(CML.write_evt(writer, msg.to_slice))
-          done.send(nil)
+          result = CML.sync(event)
+          # Timeout should win because no data written
+          cancelled.send(result.nil?)
         end
-      end
 
-      messages.size.times { done.receive }
-      writer.close
-
-      # Read all data
-      data = reader.gets_to_end
-      messages.each do |msg|
-        data.should contain(msg)
+        cancelled_result = cancelled.receive
+        cancelled_result.should be_true
+        nack_called.should be_true
+      ensure
+        reader.try &.close
+        writer.try &.close
       end
-    ensure
-      reader.try &.close
-      writer.try &.close
     end
-
-    it "propagates IO errors across threads" do
-      reader, writer = IO.pipe
-      writer.close
-      # After writer close, reader will get EOF (nil)
-      context = Fiber::ExecutionContext::Parallel.new("error_prop", maximum: 2)
-      result = Channel(String?).new(1)
-      context.spawn do
-        line = CML.sync(CML.read_line_evt(reader))
-        result.send(line)
-      end
-      received = result.receive
-      received.should be_nil  # EOF
-    ensure
-      reader.try &.close
-      writer.try &.close
-    end
-
-    it "handles cancellation with nack across threads" do
-      reader, writer = IO.pipe
-      context = Fiber::ExecutionContext::Parallel.new("cancel_test", maximum: 2)
-      cancelled = Channel(Bool).new(1)
-
-      # Create a choose between read and timeout with nack
-      read_event = CML.read_evt(reader, 4)
-      timeout_event = CML.timeout(10.milliseconds)
-
-      nack_called = false
-      read_event_with_nack = CML.with_nack do |nack_evt|
-        spawn do
-          CML.sync(nack_evt)
-          nack_called = true
-        end
-        read_event
-      end
-
-      read_event_wrapped = CML.wrap(read_event_with_nack) { |bytes| bytes.as(Bytes | Nil) }
-      timeout_event_wrapped = CML.wrap(timeout_event) { |nil_val| nil_val.as(Bytes | Nil) }
-
-      event = CML.choose([read_event_wrapped, timeout_event_wrapped])
-
-      context.spawn do
-        result = CML.sync(event)
-        # Timeout should win because no data written
-        cancelled.send(result.nil?)
-      end
-
-      cancelled_result = cancelled.receive
-      cancelled_result.should be_true
-      nack_called.should be_true
-    ensure
-      reader.try &.close
-      writer.try &.close
-    end
-  end
-{% end %}
+  {% end %}
 end

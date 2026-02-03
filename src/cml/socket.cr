@@ -45,23 +45,23 @@ module CML
         MSG_MORE      = 0x8000 # Sender will send more
       {% elsif flag?(:darwin) %}
         # macOS values (from sys/socket.h)
-        MSG_OOB       =    0x01 # Process out-of-band data
-        MSG_PEEK      =    0x02 # Peek at incoming message
-        MSG_DONTROUTE =    0x04 # Don't use local routing
-        MSG_EOR       =    0x08 # End of record
-        MSG_TRUNC     =   0x10 # Data discarded before delivery
-        MSG_CTRUNC    =   0x20 # Control data lost before delivery
-        MSG_WAITALL   =   0x40 # Wait for full request or error
-        MSG_DONTWAIT  =   0x80 # Non-blocking IO
-        MSG_EOF       =  0x100 # Data completes connection
-        MSG_WAITSTREAM = 0x200 # Wait up to full request.. may return partial
-        MSG_FLUSH     =  0x400 # Start of 'hold' seq; dump so_temp (deprecated)
-        MSG_HOLD      =  0x800 # Hold frag in so_temp (deprecated)
-        MSG_SEND      = 0x1000 # Send the packet in so_temp (deprecated)
-        MSG_HAVEMORE  = 0x2000 # Data ready to be read
-        MSG_RCVMORE   = 0x4000 # Data remains in current pkt
-        MSG_NEEDSA    = 0x10000 # Fail receive if socket address cannot be allocated
-        MSG_NOSIGNAL  = 0x80000 # Do not generate SIGPIPE on EOF
+        MSG_OOB        =    0x01 # Process out-of-band data
+        MSG_PEEK       =    0x02 # Peek at incoming message
+        MSG_DONTROUTE  =    0x04 # Don't use local routing
+        MSG_EOR        =    0x08 # End of record
+        MSG_TRUNC      =    0x10 # Data discarded before delivery
+        MSG_CTRUNC     =    0x20 # Control data lost before delivery
+        MSG_WAITALL    =    0x40 # Wait for full request or error
+        MSG_DONTWAIT   =    0x80 # Non-blocking IO
+        MSG_EOF        =   0x100 # Data completes connection
+        MSG_WAITSTREAM =   0x200 # Wait up to full request.. may return partial
+        MSG_FLUSH      =   0x400 # Start of 'hold' seq; dump so_temp (deprecated)
+        MSG_HOLD       =   0x800 # Hold frag in so_temp (deprecated)
+        MSG_SEND       =  0x1000 # Send the packet in so_temp (deprecated)
+        MSG_HAVEMORE   =  0x2000 # Data ready to be read
+        MSG_RCVMORE    =  0x4000 # Data remains in current pkt
+        MSG_NEEDSA     = 0x10000 # Fail receive if socket address cannot be allocated
+        MSG_NOSIGNAL   = 0x80000 # Do not generate SIGPIPE on EOF
       {% elsif flag?(:windows) %}
         # Windows values (from winsock2.h)
         MSG_OOB       =  0x01 # Process out-of-band data
@@ -131,7 +131,7 @@ module CML
       fd = LibC.accept(server.fd, pointerof(addr).as(LibC::Sockaddr*), pointerof(addr_len))
       if fd < 0
         err = Errno.value
-        return nil if err == Errno::EAGAIN || err == Errno::EWOULDBLOCK || err == Errno::EINTR
+        return if err == Errno::EAGAIN || err == Errno::EWOULDBLOCK || err == Errno::EINTR
         raise IO::Error.from_os_error("accept", err)
       end
       address = ::Socket::Address.from(pointerof(addr).as(LibC::Sockaddr*), addr_len)
@@ -228,16 +228,16 @@ module CML
         end
       end
 
-    private def wait_until_readable(io : ::IO) : Bool
-      return false if @cancel_flag.get
-      begin
-        CML.sync(CML::PrimitiveIO.wait_readable_evt(io, @nack_evt))
-        true
-      rescue ex : Exception
-        # IO closed or nack triggered
-        false
+      private def wait_until_readable(io : ::IO) : Bool
+        return false if @cancel_flag.get
+        begin
+          CML.sync(CML::PrimitiveIO.wait_readable_evt(io, @nack_evt))
+          true
+        rescue ex : Exception
+          # IO closed or nack triggered
+          false
+        end
       end
-    end
 
       private def deliver(value : Exception | {::TCPSocket, ::Socket::Address}, tid : TransactionId)
         return if @cancel_flag.get
@@ -257,7 +257,7 @@ module CML
 
       private def try_accept_nonblock : {::TCPSocket, ::Socket::Address}?
         fd_and_addr = CML::Socket.try_accept_fd(@server)
-        return nil unless fd_and_addr
+        return unless fd_and_addr
         fd, address = fd_and_addr
         blocking = {% if flag?(:win32) %} nil {% else %} ::Socket.get_blocking(fd) {% end %}
         ::Socket.set_blocking(fd, blocking) unless blocking.nil?
@@ -361,9 +361,8 @@ module CML
         case val = @result.get
         when Exception
           raise val
-        else
-          val
         end
+        nil
       end
 
       private def store_result(value : Nil)
@@ -372,81 +371,81 @@ module CML
       end
     end
 
-  # Unix domain socket accept
-  class UnixAcceptEvent < Event({::UNIXSocket, ::Socket::Address})
-    @server : ::UNIXServer
-    @nack_evt : Event(Nil)?
-    @ready = AtomicFlag.new
-    @cancel_flag = AtomicFlag.new
-    @result = Slot(Exception | {::UNIXSocket, ::Socket::Address}).new
-    @started = false
-    @start_mtx = CML::Sync::Mutex.new
+    # Unix domain socket accept
+    class UnixAcceptEvent < Event({::UNIXSocket, ::Socket::Address})
+      @server : ::UNIXServer
+      @nack_evt : Event(Nil)?
+      @ready = AtomicFlag.new
+      @cancel_flag = AtomicFlag.new
+      @result = Slot(Exception | {::UNIXSocket, ::Socket::Address}).new
+      @started = false
+      @start_mtx = CML::Sync::Mutex.new
 
-    def initialize(@server, @nack_evt = nil)
-    end
-
-    def poll : EventStatus({::UNIXSocket, ::Socket::Address})
-      if @ready.get
-        CML.trace "UnixAcceptEvent.poll ready", tag: "socket"
-        return Enabled({::UNIXSocket, ::Socket::Address}).new(priority: 0, value: fetch_result)
+      def initialize(@server, @nack_evt = nil)
       end
 
-      if result = try_accept_nonblock
-        CML.trace "UnixAcceptEvent.poll immediate", tag: "socket"
-        store_result(result)
-        return Enabled({::UNIXSocket, ::Socket::Address}).new(priority: 0, value: result)
-      end
+      def poll : EventStatus({::UNIXSocket, ::Socket::Address})
+        if @ready.get
+          CML.trace "UnixAcceptEvent.poll ready", tag: "socket"
+          return Enabled({::UNIXSocket, ::Socket::Address}).new(priority: 0, value: fetch_result)
+        end
 
-      Blocked({::UNIXSocket, ::Socket::Address}).new do |tid, next_fn|
-        start_once(tid)
-        next_fn.call
-      end
-    end
+        if result = try_accept_nonblock
+          CML.trace "UnixAcceptEvent.poll immediate", tag: "socket"
+          store_result(result)
+          return Enabled({::UNIXSocket, ::Socket::Address}).new(priority: 0, value: result)
+        end
 
-    protected def force_impl : EventGroup({::UNIXSocket, ::Socket::Address})
-      BaseGroup({::UNIXSocket, ::Socket::Address}).new(-> : EventStatus({::UNIXSocket, ::Socket::Address}) { poll })
-    end
-
-    private def start_once(tid : TransactionId)
-      should_start = false
-
-      @start_mtx.synchronize do
-        unless @started
-          @started = true
-          should_start = true
+        Blocked({::UNIXSocket, ::Socket::Address}).new do |tid, next_fn|
+          start_once(tid)
+          next_fn.call
         end
       end
 
-      return unless should_start
+      protected def force_impl : EventGroup({::UNIXSocket, ::Socket::Address})
+        BaseGroup({::UNIXSocket, ::Socket::Address}).new(-> : EventStatus({::UNIXSocket, ::Socket::Address}) { poll })
+      end
 
-      ::spawn do
-        begin
-          CML.trace "UnixAcceptEvent.start_once begin", tag: "socket"
-          while wait_until_readable(@server)
-            break if @cancel_flag.get
-            if result = try_accept_nonblock
-              CML.trace "UnixAcceptEvent.start_once accepted", tag: "socket"
-              deliver(result, tid)
-              break
-            end
+      private def start_once(tid : TransactionId)
+        should_start = false
+
+        @start_mtx.synchronize do
+          unless @started
+            @started = true
+            should_start = true
           end
-        rescue ex : Exception
-          deliver(ex, tid)
         end
-      end
 
-      start_nack_watcher(tid)
-    end
+        return unless should_start
 
-    private def start_nack_watcher(tid : TransactionId)
-      if nack = @nack_evt
         ::spawn do
-          CML.sync(nack)
-          @cancel_flag.set(true)
-          tid.try_cancel
+          begin
+            CML.trace "UnixAcceptEvent.start_once begin", tag: "socket"
+            while wait_until_readable(@server)
+              break if @cancel_flag.get
+              if result = try_accept_nonblock
+                CML.trace "UnixAcceptEvent.start_once accepted", tag: "socket"
+                deliver(result, tid)
+                break
+              end
+            end
+          rescue ex : Exception
+            deliver(ex, tid)
+          end
+        end
+
+        start_nack_watcher(tid)
+      end
+
+      private def start_nack_watcher(tid : TransactionId)
+        if nack = @nack_evt
+          ::spawn do
+            CML.sync(nack)
+            @cancel_flag.set(true)
+            tid.try_cancel
+          end
         end
       end
-    end
 
       private def wait_until_readable(io : ::IO) : Bool
         return false if @cancel_flag.get
@@ -459,117 +458,117 @@ module CML
         end
       end
 
-    private def deliver(value : Exception | {::UNIXSocket, ::Socket::Address}, tid : TransactionId)
-      return if @cancel_flag.get
-      @result.set(value)
-      @ready.set(true)
-      tid.try_commit_and_resume
-    end
-
-    private def fetch_result : {::UNIXSocket, ::Socket::Address}
-      case val = @result.get
-      when Exception
-        raise val
-      else
-        val
-      end
-    end
-
-    private def try_accept_nonblock : {::UNIXSocket, ::Socket::Address}?
-      fd_and_addr = CML::Socket.try_accept_fd(@server)
-      return nil unless fd_and_addr
-      fd, address = fd_and_addr
-      blocking = {% if flag?(:win32) %} nil {% else %} ::Socket.get_blocking(fd) {% end %}
-      ::Socket.set_blocking(fd, blocking) unless blocking.nil?
-      socket = ::UNIXSocket.from_handle(fd, type: @server.type, path: @server.path, blocking: blocking)
-      socket.sync = @server.sync?
-      {socket, address}
-    end
-
-    private def store_result(value : {::UNIXSocket, ::Socket::Address})
-      @result.set(value)
-      @ready.set(true)
-    end
-  end
-
-  # Unix domain socket connect
-  class UnixConnectEvent < Event(::UNIXSocket)
-    @path : String
-    @nack_evt : Event(Nil)?
-    @ready = AtomicFlag.new
-    @cancel_flag = AtomicFlag.new
-    @result = Slot(Exception | ::UNIXSocket).new
-    @started = false
-    @start_mtx = CML::Sync::Mutex.new
-
-    def initialize(@path, @nack_evt = nil)
-    end
-
-    def poll : EventStatus(::UNIXSocket)
-      if @ready.get
-        return Enabled(::UNIXSocket).new(priority: 0, value: fetch_result)
+      private def deliver(value : Exception | {::UNIXSocket, ::Socket::Address}, tid : TransactionId)
+        return if @cancel_flag.get
+        @result.set(value)
+        @ready.set(true)
+        tid.try_commit_and_resume
       end
 
-      Blocked(::UNIXSocket).new do |tid, next_fn|
-        start_once(tid)
-        next_fn.call
-      end
-    end
-
-    protected def force_impl : EventGroup(::UNIXSocket)
-      BaseGroup(::UNIXSocket).new(-> : EventStatus(::UNIXSocket) { poll })
-    end
-
-    private def start_once(tid : TransactionId)
-      should_start = false
-
-      @start_mtx.synchronize do
-        unless @started
-          @started = true
-          should_start = true
+      private def fetch_result : {::UNIXSocket, ::Socket::Address}
+        case val = @result.get
+        when Exception
+          raise val
+        else
+          val
         end
       end
 
-      return unless should_start
+      private def try_accept_nonblock : {::UNIXSocket, ::Socket::Address}?
+        fd_and_addr = CML::Socket.try_accept_fd(@server)
+        return unless fd_and_addr
+        fd, address = fd_and_addr
+        blocking = {% if flag?(:win32) %} nil {% else %} ::Socket.get_blocking(fd) {% end %}
+        ::Socket.set_blocking(fd, blocking) unless blocking.nil?
+        socket = ::UNIXSocket.from_handle(fd, type: @server.type, path: @server.path, blocking: blocking)
+        socket.sync = @server.sync?
+        {socket, address}
+      end
 
-      ::spawn do
-        begin
-          socket = ::UNIXSocket.new(@path)
-          deliver(socket, tid)
-        rescue ex : Exception
-          deliver(ex, tid)
+      private def store_result(value : {::UNIXSocket, ::Socket::Address})
+        @result.set(value)
+        @ready.set(true)
+      end
+    end
+
+    # Unix domain socket connect
+    class UnixConnectEvent < Event(::UNIXSocket)
+      @path : String
+      @nack_evt : Event(Nil)?
+      @ready = AtomicFlag.new
+      @cancel_flag = AtomicFlag.new
+      @result = Slot(Exception | ::UNIXSocket).new
+      @started = false
+      @start_mtx = CML::Sync::Mutex.new
+
+      def initialize(@path, @nack_evt = nil)
+      end
+
+      def poll : EventStatus(::UNIXSocket)
+        if @ready.get
+          return Enabled(::UNIXSocket).new(priority: 0, value: fetch_result)
+        end
+
+        Blocked(::UNIXSocket).new do |tid, next_fn|
+          start_once(tid)
+          next_fn.call
         end
       end
 
-      start_nack_watcher(tid)
-    end
+      protected def force_impl : EventGroup(::UNIXSocket)
+        BaseGroup(::UNIXSocket).new(-> : EventStatus(::UNIXSocket) { poll })
+      end
 
-    private def start_nack_watcher(tid : TransactionId)
-      if nack = @nack_evt
+      private def start_once(tid : TransactionId)
+        should_start = false
+
+        @start_mtx.synchronize do
+          unless @started
+            @started = true
+            should_start = true
+          end
+        end
+
+        return unless should_start
+
         ::spawn do
-          CML.sync(nack)
-          @cancel_flag.set(true)
-          tid.try_cancel
+          begin
+            socket = ::UNIXSocket.new(@path)
+            deliver(socket, tid)
+          rescue ex : Exception
+            deliver(ex, tid)
+          end
+        end
+
+        start_nack_watcher(tid)
+      end
+
+      private def start_nack_watcher(tid : TransactionId)
+        if nack = @nack_evt
+          ::spawn do
+            CML.sync(nack)
+            @cancel_flag.set(true)
+            tid.try_cancel
+          end
+        end
+      end
+
+      private def deliver(value : Exception | ::UNIXSocket, tid : TransactionId)
+        return if @cancel_flag.get
+        @result.set(value)
+        @ready.set(true)
+        tid.try_commit_and_resume
+      end
+
+      private def fetch_result : ::UNIXSocket
+        case val = @result.get
+        when Exception
+          raise val
+        else
+          val
         end
       end
     end
-
-    private def deliver(value : Exception | ::UNIXSocket, tid : TransactionId)
-      return if @cancel_flag.get
-      @result.set(value)
-      @ready.set(true)
-      tid.try_commit_and_resume
-    end
-
-    private def fetch_result : ::UNIXSocket
-      case val = @result.get
-      when Exception
-        raise val
-      else
-        val
-      end
-    end
-  end
 
     # Receive bytes from a socket using readiness polling.
     class RecvEvent < Event(Bytes)
@@ -651,7 +650,7 @@ module CML
         bytes = LibC.recv(@socket.fd, buffer, @length, CML::Socket.nonblock_flags(@flags))
         if bytes < 0
           errno = Errno.value
-          return nil if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK || errno == Errno::EINTR
+          return if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK || errno == Errno::EINTR
           raise IO::Error.from_os_error("recv", errno)
         end
         buffer[0, bytes.to_i32]
@@ -768,7 +767,7 @@ module CML
         bytes = LibC.send(@socket.fd, @data, @data.size, CML::Socket.nonblock_flags(@flags))
         if bytes < 0
           errno = Errno.value
-          return nil if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK || errno == Errno::EINTR
+          return if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK || errno == Errno::EINTR
           raise IO::Error.from_os_error("send", errno)
         end
         bytes.to_i32
@@ -895,7 +894,7 @@ module CML
           end
           if bytes < 0
             errno = Errno.value
-            return nil if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK || errno == Errno::EINTR
+            return if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK || errno == Errno::EINTR
             raise IO::Error.from_os_error("send", errno)
           end
           bytes.to_i32
@@ -1025,7 +1024,7 @@ module CML
           bytes = LibC.recvfrom(@socket.fd, buffer, @max, CML::Socket.nonblock_flags(@flags), pointerof(addr).as(LibC::Sockaddr*), pointerof(addr_len))
           if bytes < 0
             errno = Errno.value
-            return nil if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK || errno == Errno::EINTR
+            return if errno == Errno::EAGAIN || errno == Errno::EWOULDBLOCK || errno == Errno::EINTR
             raise IO::Error.from_os_error("recvfrom", errno)
           end
           address = ::Socket::Address.from(pointerof(addr).as(LibC::Sockaddr*), addr_len)

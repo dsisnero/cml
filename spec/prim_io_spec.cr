@@ -172,29 +172,29 @@ describe CML::PrimitiveIO do
   end
 
   {% if flag?(:execution_context) %}
-  describe "execution context detection" do
-    it "selects appropriate backend for context" do
-      # Reset backend cache to force re-selection
-      CML::PrimitiveIO.backend = nil
+    describe "execution context detection" do
+      it "selects appropriate backend for context" do
+        # Reset backend cache to force re-selection
+        CML::PrimitiveIO.backend = nil
 
-      # Default context (should be Isolated or Concurrent depending on Crystal)
-      backend = CML::PrimitiveIO.backend
-      backend.should be_a(CML::PrimitiveIO::Backend)
+        # Default context (should be Isolated or Concurrent depending on Crystal)
+        backend = CML::PrimitiveIO.backend
+        backend.should be_a(CML::PrimitiveIO::Backend)
 
-      # Note: We can't easily test Parallel context selection without
-      # actually creating a Parallel context, which would require
-      # spawning OS threads. The eventloop_compat_spec tests that.
-      # This test just ensures the mechanism works in default context.
+        # Note: We can't easily test Parallel context selection without
+        # actually creating a Parallel context, which would require
+        # spawning OS threads. The eventloop_compat_spec tests that.
+        # This test just ensures the mechanism works in default context.
+      end
+
+      it "detects parallel context with flag" do
+        # This test requires -Dpreview_mt -Dexecution_context
+        # The in_parallel_context? method is private, but we can test
+        # indirectly by checking backend selection after resetting cache.
+        # However, we cannot call private methods.
+        # We'll rely on integration tests in eventloop_compat_spec.
+      end
     end
-
-    it "detects parallel context with flag" do
-      # This test requires -Dpreview_mt -Dexecution_context
-      # The in_parallel_context? method is private, but we can test
-      # indirectly by checking backend selection after resetting cache.
-      # However, we cannot call private methods.
-      # We'll rely on integration tests in eventloop_compat_spec.
-    end
-  end
   {% end %}
 
   describe "ChanIO adapters" do

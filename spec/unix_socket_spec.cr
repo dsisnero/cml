@@ -1,7 +1,6 @@
 require "./spec_helper"
 
 describe "CML Unix socket events" do
-
   it "accepts Unix stream connections and exchanges data" do
     # Create a temporary socket path
     socket_path = File.tempname("cml_unix_socket")

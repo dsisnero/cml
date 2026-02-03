@@ -59,7 +59,7 @@ module CML
 
     # SML: val getEvt : 'a result -> 'a event
     def get_evt : Event(T)
-      CML.wrap(@ivar.i_get_evt) { |value| value.unwrap }
+      CML.wrap(@ivar.i_get_evt, &.unwrap)
     end
   end
 end
