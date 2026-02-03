@@ -525,6 +525,485 @@ module CML
       end
     end
 
+    # Binary input stream (UInt8 elements, Bytes vectors)
+    class BinInstream < Instream(UInt8)
+      def raw_io : IO
+        io
+      end
+
+      class Input1Event < Event({UInt8, BinInstream}?)
+        @instream : BinInstream
+        @nack_evt : Event(Nil)?
+        @ready = AtomicFlag.new
+        @cancel_flag = AtomicFlag.new
+        @result = Slot(Exception | {UInt8, BinInstream}?).new
+        @started = false
+        @start_mtx : CML::Sync::Mutex
+        @start_mtx = CML::Sync::Mutex.new(:reentrant)
+
+        def initialize(@instream, @nack_evt = nil)
+        end
+
+        def poll : EventStatus({UInt8, BinInstream}?)
+          if @ready.get
+            return Enabled({UInt8, BinInstream}?).new(priority: 0, value: fetch_result)
+          end
+
+          Blocked({UInt8, BinInstream}?).new do |tid, next_fn|
+            start_once(tid)
+            next_fn.call
+          end
+        end
+
+        protected def force_impl : EventGroup({UInt8, BinInstream}?)
+          BaseGroup({UInt8, BinInstream}?).new(-> : EventStatus({UInt8, BinInstream}?) { poll })
+        end
+
+        private def start_once(tid : TransactionId)
+          should_start = false
+
+          @start_mtx.synchronize do
+            unless @started
+              @started = true
+              should_start = true
+            end
+          end
+
+          return unless should_start
+
+          ::spawn do
+            begin
+              loop do
+                break if @cancel_flag.get
+                readable = wait_until_readable
+                unless readable
+                  next
+                end
+                byte = @instream.io.read_byte
+                if byte.nil?
+                  deliver(nil, tid)
+                else
+                  deliver({byte, BinInstream.new(@instream.io)}, tid)
+                end
+                break
+              end
+            rescue ex : Exception
+              deliver(ex, tid)
+            end
+          end
+
+          start_nack_watcher(tid)
+        end
+
+        private def start_nack_watcher(tid : TransactionId)
+          if nack = @nack_evt
+            ::spawn do
+              CML.sync(nack)
+              @cancel_flag.set(true)
+              tid.try_cancel
+            end
+          end
+        end
+
+        private def wait_until_readable : Bool
+          return false if @cancel_flag.get
+
+          if @instream.io.responds_to?(:wait_readable)
+            begin
+              readable = @instream.io.wait_readable(50.milliseconds, raise_if_closed: false)
+              return readable
+            rescue ex
+              return true
+            end
+          end
+
+          true
+        end
+
+        private def deliver(value : Exception | {UInt8, BinInstream}?, tid : TransactionId)
+          return if @cancel_flag.get
+          @result.set(value)
+          @ready.set(true)
+          tid.try_commit_and_resume
+        end
+
+        private def fetch_result : {UInt8, BinInstream}?
+          case val = @result.get
+          when Exception
+            raise val
+          else
+            val
+          end
+        end
+      end
+
+      class InputNEvent < Event({Bytes, BinInstream})
+        @instream : BinInstream
+        @nack_evt : Event(Nil)?
+        @ready = AtomicFlag.new
+        @cancel_flag = AtomicFlag.new
+        @result = Slot(Exception | {Bytes, BinInstream}).new
+        @started = false
+        @start_mtx : CML::Sync::Mutex
+        @start_mtx = CML::Sync::Mutex.new(:reentrant)
+
+        def initialize(@instream, @n, @nack_evt = nil)
+        end
+
+        def poll : EventStatus({Bytes, BinInstream})
+          if @ready.get
+            return Enabled({Bytes, BinInstream}).new(priority: 0, value: fetch_result)
+          end
+
+          Blocked({Bytes, BinInstream}).new do |tid, next_fn|
+            start_once(tid)
+            next_fn.call
+          end
+        end
+
+        protected def force_impl : EventGroup({Bytes, BinInstream})
+          BaseGroup({Bytes, BinInstream}).new(-> : EventStatus({Bytes, BinInstream}) { poll })
+        end
+
+        private def start_once(tid : TransactionId)
+          should_start = false
+
+          @start_mtx.synchronize do
+            unless @started
+              @started = true
+              should_start = true
+            end
+          end
+
+          return unless should_start
+
+          ::spawn do
+            begin
+              loop do
+                break if @cancel_flag.get
+                readable = wait_until_readable
+                unless readable
+                  next
+                end
+                buffer = Bytes.new(@n)
+                bytes_read = @instream.io.read(buffer)
+                deliver({buffer[0, bytes_read], BinInstream.new(@instream.io)}, tid)
+                break
+              end
+            rescue ex : Exception
+              deliver(ex, tid)
+            end
+          end
+
+          start_nack_watcher(tid)
+        end
+
+        private def start_nack_watcher(tid : TransactionId)
+          if nack = @nack_evt
+            ::spawn do
+              CML.sync(nack)
+              @cancel_flag.set(true)
+              tid.try_cancel
+            end
+          end
+        end
+
+        private def wait_until_readable : Bool
+          return false if @cancel_flag.get
+
+          if @instream.io.responds_to?(:wait_readable)
+            begin
+              readable = @instream.io.wait_readable(50.milliseconds, raise_if_closed: false)
+              return readable
+            rescue ex
+              return true
+            end
+          end
+
+          true
+        end
+
+        private def deliver(value : Exception | {Bytes, BinInstream}, tid : TransactionId)
+          return if @cancel_flag.get
+          @result.set(value)
+          @ready.set(true)
+          tid.try_commit_and_resume
+        end
+
+        private def fetch_result : {Bytes, BinInstream}
+          case val = @result.get
+          when Exception
+            raise val
+          else
+            val
+          end
+        end
+      end
+
+      class InputEvent < Event({Bytes, BinInstream})
+        @instream : BinInstream
+        @nack_evt : Event(Nil)?
+        @ready = AtomicFlag.new
+        @cancel_flag = AtomicFlag.new
+        @result = Slot(Exception | {Bytes, BinInstream}).new
+        @started = false
+        @start_mtx : CML::Sync::Mutex
+        @start_mtx = CML::Sync::Mutex.new(:reentrant)
+
+        def initialize(@instream, @nack_evt = nil)
+        end
+
+        def poll : EventStatus({Bytes, BinInstream})
+          if @ready.get
+            return Enabled({Bytes, BinInstream}).new(priority: 0, value: fetch_result)
+          end
+
+          Blocked({Bytes, BinInstream}).new do |tid, next_fn|
+            start_once(tid)
+            next_fn.call
+          end
+        end
+
+        protected def force_impl : EventGroup({Bytes, BinInstream})
+          BaseGroup({Bytes, BinInstream}).new(-> : EventStatus({Bytes, BinInstream}) { poll })
+        end
+
+        private def start_once(tid : TransactionId)
+          should_start = false
+
+          @start_mtx.synchronize do
+            unless @started
+              @started = true
+              should_start = true
+            end
+          end
+
+          return unless should_start
+
+          ::spawn do
+            begin
+              loop do
+                break if @cancel_flag.get
+                readable = wait_until_readable
+                unless readable
+                  next
+                end
+                bytes = @instream.io.read_available
+                deliver({bytes, BinInstream.new(@instream.io)}, tid)
+                break
+              end
+            rescue ex : Exception
+              deliver(ex, tid)
+            end
+          end
+
+          start_nack_watcher(tid)
+        end
+
+        private def start_nack_watcher(tid : TransactionId)
+          if nack = @nack_evt
+            ::spawn do
+              CML.sync(nack)
+              @cancel_flag.set(true)
+              tid.try_cancel
+            end
+          end
+        end
+
+        private def wait_until_readable : Bool
+          return false if @cancel_flag.get
+
+          if @instream.io.responds_to?(:wait_readable)
+            begin
+              readable = @instream.io.wait_readable(50.milliseconds, raise_if_closed: false)
+              return readable
+            rescue ex
+              return true
+            end
+          end
+
+          true
+        end
+
+        private def deliver(value : Exception | {Bytes, BinInstream}, tid : TransactionId)
+          return if @cancel_flag.get
+          @result.set(value)
+          @ready.set(true)
+          tid.try_commit_and_resume
+        end
+
+        private def fetch_result : {Bytes, BinInstream}
+          case val = @result.get
+          when Exception
+            raise val
+          else
+            val
+          end
+        end
+      end
+
+      class InputAllEvent < Event({Bytes, BinInstream})
+        @instream : BinInstream
+        @nack_evt : Event(Nil)?
+        @ready = AtomicFlag.new
+        @cancel_flag = AtomicFlag.new
+        @result = Slot(Exception | {Bytes, BinInstream}).new
+        @started = false
+        @start_mtx : CML::Sync::Mutex
+        @start_mtx = CML::Sync::Mutex.new(:reentrant)
+
+        def initialize(@instream, @nack_evt = nil)
+        end
+
+        def poll : EventStatus({Bytes, BinInstream})
+          if @ready.get
+            return Enabled({Bytes, BinInstream}).new(priority: 0, value: fetch_result)
+          end
+
+          Blocked({Bytes, BinInstream}).new do |tid, next_fn|
+            start_once(tid)
+            next_fn.call
+          end
+        end
+
+        protected def force_impl : EventGroup({Bytes, BinInstream})
+          BaseGroup({Bytes, BinInstream}).new(-> : EventStatus({Bytes, BinInstream}) { poll })
+        end
+
+        private def start_once(tid : TransactionId)
+          should_start = false
+
+          @start_mtx.synchronize do
+            unless @started
+              @started = true
+              should_start = true
+            end
+          end
+
+          return unless should_start
+
+          ::spawn do
+            begin
+              data = Bytes.empty
+              loop do
+                break if @cancel_flag.get
+                readable = wait_until_readable
+                unless readable
+                  next
+                end
+                chunk = @instream.io.read_available
+                break if chunk.empty?
+                data = data + chunk
+              end
+              deliver({data, BinInstream.new(@instream.io)}, tid)
+            rescue ex : Exception
+              deliver(ex, tid)
+            end
+          end
+
+          start_nack_watcher(tid)
+        end
+
+        private def start_nack_watcher(tid : TransactionId)
+          if nack = @nack_evt
+            ::spawn do
+              CML.sync(nack)
+              @cancel_flag.set(true)
+              tid.try_cancel
+            end
+          end
+        end
+
+        private def wait_until_readable : Bool
+          return false if @cancel_flag.get
+
+          if @instream.io.responds_to?(:wait_readable)
+            begin
+              readable = @instream.io.wait_readable(50.milliseconds, raise_if_closed: false)
+              return readable
+            rescue ex
+              return true
+            end
+          end
+
+          true
+        end
+
+        private def deliver(value : Exception | {Bytes, BinInstream}, tid : TransactionId)
+          return if @cancel_flag.get
+          @result.set(value)
+          @ready.set(true)
+          tid.try_commit_and_resume
+        end
+
+        private def fetch_result : {Bytes, BinInstream}
+          case val = @result.get
+          when Exception
+            raise val
+          else
+            val
+          end
+        end
+      end
+    end
+
+    class BinOutstream < Outstream(UInt8)
+      def raw_io : IO
+        io
+      end
+
+      def output(data : Bytes) : BinOutstream
+        io.write(data)
+        BinOutstream.new(io)
+      end
+
+      def output1(byte : UInt8) : BinOutstream
+        io.write(Bytes[byte])
+        BinOutstream.new(io)
+      end
+
+      def flush_out : BinOutstream
+        io.flush
+        BinOutstream.new(io)
+      end
+
+      def close_out : Nil
+        io.close
+      end
+    end
+
+    def self.input1_evt(instream : BinInstream) : Event({UInt8, BinInstream}?)
+      CML.with_nack do |nack|
+        BinInstream::Input1Event.new(instream, nack)
+      end
+    end
+
+    def self.input_n_evt(instream : BinInstream, n : Int32) : Event({Bytes, BinInstream})
+      CML.with_nack do |nack|
+        BinInstream::InputNEvent.new(instream, n, nack)
+      end
+    end
+
+    def self.input_evt(instream : BinInstream) : Event({Bytes, BinInstream})
+      CML.with_nack do |nack|
+        BinInstream::InputEvent.new(instream, nack)
+      end
+    end
+
+    def self.input_all_evt(instream : BinInstream) : Event({Bytes, BinInstream})
+      CML.with_nack do |nack|
+        BinInstream::InputAllEvent.new(instream, nack)
+      end
+    end
+
+    def self.open_bin_in(io : IO) : BinInstream
+      BinInstream.new(io)
+    end
+
+    def self.open_bin_out(io : IO) : BinOutstream
+      BinOutstream.new(io)
+    end
+
     # Text output stream (Char elements, String vectors)
     class TextOutstream < Outstream(Char)
       def raw_io : IO
