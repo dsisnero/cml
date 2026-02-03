@@ -945,6 +945,77 @@ module CML
           end
         end
       end
+
+      # Blocking input operations matching CML_STREAM_IO.
+      def input1 : {UInt8, BinInstream}?
+        byte = io.read_byte
+        return nil if byte.nil?
+        {byte, BinInstream.new(io)}
+      end
+
+      def input_n(n : Int32) : {Bytes, BinInstream}
+        buffer = Bytes.new(n)
+        bytes_read = io.read(buffer)
+        {buffer[0, bytes_read], BinInstream.new(io)}
+      end
+
+      def input : {Bytes, BinInstream}
+        bytes = io.read_available
+        {bytes, BinInstream.new(io)}
+      end
+
+      def input_all : {Bytes, BinInstream}
+        buffer = Bytes.new(4096)
+        output = IO::Memory.new
+        loop do
+          bytes_read = io.read(buffer)
+          break if bytes_read == 0
+          output.write(buffer[0, bytes_read])
+        end
+        {output.to_slice, BinInstream.new(io)}
+      end
+
+      def close_in : Nil
+        io.close
+      end
+
+      def end_of_stream : Bool
+        return true if io.closed?
+        if io.responds_to?(:peek)
+          peek_bytes = io.peek
+          return peek_bytes.nil? || peek_bytes.empty?
+        end
+        false
+      end
+
+      # Read a single byte, returns nil on EOF.
+      def read_one : UInt8?
+        io.read_byte
+      end
+
+      # Read up to n bytes.
+      def read_n(n : Int32) : Slice(UInt8)
+        buffer = Bytes.new(n)
+        bytes_read = io.read(buffer)
+        buffer[0, bytes_read]
+      end
+
+      # Read all available bytes (non-blocking).
+      def read_available : Slice(UInt8)
+        io.read_available
+      end
+
+      # Read all remaining bytes until EOF.
+      def read_all : Slice(UInt8)
+        buffer = Bytes.new(4096)
+        output = IO::Memory.new
+        loop do
+          bytes_read = io.read(buffer)
+          break if bytes_read == 0
+          output.write(buffer[0, bytes_read])
+        end
+        output.to_slice
+      end
     end
 
     class BinOutstream < Outstream(UInt8)
@@ -1115,15 +1186,15 @@ module CML
 
       # Read up to n characters.
       def read_n(n : Int32) : Slice(Char)
-        slice = Slice(Char).new(n)
+        chars = Array(Char).new(n)
         count = 0
         while count < n
           ch = io.read_char
           break if ch.nil?
-          slice[count] = ch
+          chars << ch
           count += 1
         end
-        slice[0, count]
+        Slice(Char).new(chars.size) { |i| chars[i] }
       end
 
       # Read all available characters (non-blocking).
