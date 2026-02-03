@@ -35,7 +35,7 @@ module CML
       end
 
       def read_arr_evt(buffer : Bytes) : Event(Int32)
-        @read_arr_evt.call(buffer)
+        @read_arr_evt.call(buffer).as(Event(Int32))
       end
 
       def avail : Int32?
@@ -162,7 +162,7 @@ module CML
         return CML.always(take_from_buffer(n)) if @buffer.size > 0
 
         CML.wrap(@chan.recv_evt) do |val|
-          return mark_closed if val.nil?
+          next mark_closed if val.nil?
           take_from_bytes(val, n)
         end
       end
@@ -300,12 +300,12 @@ module CML
         ->(n : Int32) { adapter.read_vec(n) },
         ->(buffer : Bytes) { adapter.read_arr(buffer) },
         ->(n : Int32) { adapter.read_vec_evt(n) },
-        ->(buffer : Bytes) { adapter.read_arr_evt(buffer) },
+        ->(buffer : Bytes) { adapter.read_arr_evt(buffer).as(Event(Int32)) },
         -> { adapter.avail },
-        -> { adapter.get_pos },
+        -> : Int64? { adapter.get_pos },
         ->(pos : Int64) { adapter.set_pos(pos) },
-        -> { adapter.end_pos },
-        -> { adapter.verify_pos },
+        -> : Int64? { adapter.end_pos },
+        -> : Int64? { adapter.verify_pos },
         -> { adapter.close },
         -> { nil }
       )
@@ -318,12 +318,12 @@ module CML
         adapter.chunk_size,
         ->(data : Bytes) { adapter.write_vec(data) },
         ->(buffer : Bytes) { adapter.write_arr(buffer) },
-        ->(data : Bytes) { adapter.write_vec_evt(data) },
-        ->(buffer : Bytes) { adapter.write_arr_evt(buffer) },
-        -> { adapter.get_pos },
+        ->(data : Bytes) { adapter.write_vec_evt(data).as(Event(Int32)) },
+        ->(buffer : Bytes) { adapter.write_arr_evt(buffer).as(Event(Int32)) },
+        -> : Int64? { adapter.get_pos },
         ->(pos : Int64) { adapter.set_pos(pos) },
-        -> { adapter.end_pos },
-        -> { adapter.verify_pos },
+        -> : Int64? { adapter.end_pos },
+        -> : Int64? { adapter.verify_pos },
         -> { adapter.close },
         -> { nil }
       )
