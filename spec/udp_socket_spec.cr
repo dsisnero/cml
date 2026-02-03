@@ -4,12 +4,12 @@ describe "CML UDP socket events" do
   it "can send and receive datagrams" do
     server = UDPSocket.new
     begin
-      server.bind("127.0.0.1", 12345)
+      server.bind("127.0.0.1", 0)
     rescue ex : Socket::BindError
       pending!("cannot bind UDP socket: #{ex.message}")
     end
 
-    port = 12345
+    port = server.local_address.port
     client = UDPSocket.new
 
     received = Atomic(Bool).new(false)
