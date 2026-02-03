@@ -1131,11 +1131,11 @@ module CML
       end
 
       def self.send_evt(socket : Socket::DatagramSocket, data : Bytes, flags : OutFlags, host : String? = nil, port : Int32? = nil) : Event(Int32)
-        send_evt(socket.inner, data, flags, host, port)
+        send_evt(socket.inner, data, host, port, CML::Socket.out_flags_to_int(flags))
       end
 
       def self.send_vec_evt(socket : Socket::DatagramSocket, data : Bytes, flags : OutFlags, host : String? = nil, port : Int32? = nil) : Event(Int32)
-        send_evt(socket.inner, data, flags, host, port)
+        send_evt(socket.inner, data, host, port, CML::Socket.out_flags_to_int(flags))
       end
 
       def self.recv_vec_from_evt(socket : Socket::DatagramSocket, max : Int32, flags : Int32 = 0) : Event({Bytes, ::Socket::Address})
