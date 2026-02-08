@@ -1175,6 +1175,29 @@ module CML
     GuardEvent(T).new(&block)
   end
 
+  # Generate overloads for choose with heterogeneous event types
+  # This allows CML.choose(ch.recv_evt, CML.timeout(duration)) without explicit wrapping
+  macro generate_heterogeneous_choose_overloads(max_events)
+    {% for i in 2..max_events %}
+      def self.choose(
+        {% for j in 1..i %}
+          event{{ j }} : Event(T{{ j }}){% if j < i %},{% end %}
+        {% end %}
+      ) : Event({% for j in 1..i %}T{{ j }}{% if j < i %} | {% end %}{% end %}) forall {% for j in 1..i %}T{{ j }}{% if j < i %}, {% end %}{% end %}
+        # Wrap each event to union type
+        wrapped_events = [] of Event({% for j in 1..i %}T{{ j }}{% if j < i %} | {% end %}{% end %})
+        {% for j in 1..i %}
+          wrapped_events << WrapEvent(T{{ j }}, {% for k in 1..i %}T{{ k }}{% if k < i %} | {% end %}{% end %}).new(event{{ j }}) { |x| x.as({% for k in 1..i %}T{{ k }}{% if k < i %} | {% end %}{% end %}) }
+        {% end %}
+
+        ChooseEvent({% for j in 1..i %}T{{ j }}{% if j < i %} | {% end %}{% end %}).new(wrapped_events)
+      end
+    {% end %}
+  end
+
+  # Generate overloads for up to 12 events (should cover most use cases)
+  generate_heterogeneous_choose_overloads(12)
+
   def self.choose(events : Array(Event(T))) : Event(T) forall T
     case events.size
     when 0
@@ -1189,6 +1212,27 @@ module CML
   def self.choose(*events : Event(T)) : Event(T) forall T
     choose(events.to_a)
   end
+
+  # Generate overloads for select with heterogeneous event types
+  # select(event1, event2, ...) is equivalent to sync(choose(event1, event2, ...))
+  macro generate_heterogeneous_select_overloads(max_events)
+    {% for i in 2..max_events %}
+      def self.select(
+        {% for j in 1..i %}
+          event{{ j }} : Event(T{{ j }}){% if j < i %},{% end %}
+        {% end %}
+      ) : {% for j in 1..i %}T{{ j }}{% if j < i %} | {% end %}{% end %} forall {% for j in 1..i %}T{{ j }}{% if j < i %}, {% end %}{% end %}
+        sync(choose(
+          {% for j in 1..i %}
+            event{{ j }}{% if j < i %},{% end %}
+          {% end %}
+        ))
+      end
+    {% end %}
+  end
+
+  # Generate overloads for up to 12 events (should cover most use cases)
+  generate_heterogeneous_select_overloads(12)
 
   def self.with_nack(&f : Event(Nil) -> Event(T)) : Event(T) forall T
     WithNackEvent(T).new(&f)
@@ -1456,10 +1500,6 @@ module CML
   # Run a system command synchronously using an event under the hood.
   def self.system(command : String) : ::Process::Status
     sync(system_evt(command))
-  end
-
-  def self.select(events : Array(Event(T))) : T forall T
-    sync(choose(events))
   end
 
   def self.channel(type : T.class) : Chan(T) forall T
