@@ -1466,25 +1466,6 @@ module CML
   # DSL helpers
   # -----------------------
 
-  # Fire after the given duration, then evaluate the block.
-  def self.after(duration : Time::Span, &block : -> T) : Event(T) forall T
-    wrap(timeout(duration)) { block.call }
-  end
-
-  # Event that spawns a fiber when synchronized and returns its thread id.
-  def self.spawn_evt(&block : -> Nil) : Event(Thread::Id)
-    guard do
-      AlwaysEvent(Thread::Id).new(spawn(&block))
-    end
-  end
-
-  # -----------------------
-  # Sleep helper
-  # -----------------------
-
-  def self.sleep(duration : Time::Span)
-    sync(timeout(duration))
-  end
 
   # -----------------------
   # Process helper events
