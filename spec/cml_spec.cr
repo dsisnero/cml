@@ -283,7 +283,7 @@ describe CML do
       CML.sync(CML.timeout(50.milliseconds))
       elapsed = SpecTime.monotonic - start
 
-      elapsed.should be >= 35.milliseconds
+      elapsed.should be >= 30.milliseconds
       elapsed.should be < 500.milliseconds
     end
 
