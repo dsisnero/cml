@@ -1,0 +1,16 @@
+Directory walker benchmarks
+root=examples workers= iterations=3
+
+[debug]
+root=examples workers=10 iterations=3
+serial: avg=5.79ms sum=22380023
+channel_fibers: avg=5.6ms sum=22380055
+channel_threads: avg=5.26ms sum=22380094
+cml: avg=8.9ms sum=22380135
+
+[release]
+root=examples workers=10 iterations=3
+serial: avg=3.59ms sum=22380212
+channel_fibers: avg=3.24ms sum=22380244
+channel_threads: avg=3.67ms sum=22380284
+cml: avg=4.74ms sum=22380325

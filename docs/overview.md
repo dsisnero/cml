@@ -15,9 +15,10 @@ end
 ```
 
 Every event implements `try_register`, which:
-- Attempts to commit the event immediately if possible
-- Returns a cancellation procedure if the event is registered
-- Never blocks the calling fiber
+
+*   Attempts to commit the event immediately if possible
+*   Returns a cancellation procedure if the event is registered
+*   Never blocks the calling fiber
 
 ### Atomic Commit with Pick
 
@@ -48,14 +49,14 @@ This atomic commit mechanism guarantees the "one pick, one commit" principle - e
 
 ### Basic Events
 
-- **`AlwaysEvt(T)`**: Immediately succeeds with a fixed value
-- **`NeverEvt(T)`**: Never succeeds (useful for testing)
-- **`TimeoutEvt`**: Succeeds after a time duration
+* **`AlwaysEvt(T)`**: Immediately succeeds with a fixed value
+* **`NeverEvt(T)`**: Never succeeds (useful for testing)
+* **`TimeoutEvt`**: Succeeds after a time duration
 
 ### Channel Events
 
-- **`SendEvt(T)`**: Attempts to send a value on a channel
-- **`RecvEvt(T)`**: Attempts to receive from a channel
+* **`SendEvt(T)`**: Attempts to send a value on a channel
+* **`RecvEvt(T)`**: Attempts to receive from a channel
 
 Channels maintain separate queues for senders and receivers, matching them when both are available:
 
@@ -79,6 +80,7 @@ end
 ### Event Combinators
 
 #### `wrap_evt` - Result Transformation
+
 Transforms the result of an event after it succeeds:
 
 ```crystal
@@ -98,6 +100,7 @@ end
 ```
 
 #### `guard_evt` - Lazy Event Construction
+
 Defers event creation until registration time:
 
 ```crystal
@@ -110,6 +113,7 @@ end
 ```
 
 #### `nack_evt` - Cancellation Cleanup
+
 Executes cleanup code when an event is cancelled:
 
 ```crystal
@@ -130,6 +134,7 @@ end
 ```
 
 #### `choose_evt` - Event Racing
+
 Races multiple events, allowing only one to succeed:
 
 ```crystal
@@ -160,37 +165,42 @@ end
 ```
 
 This protocol ensures:
-1. **Non-blocking registration**: `try_register` never blocks
-2. **Deterministic waiting**: `pick.wait` blocks until decision
-3. **Proper cleanup**: `cancel.call` ensures no resource leaks
+
+1.  **Non-blocking registration**: `try_register` never blocks
+2.  **Deterministic waiting**: `pick.wait` blocks until decision
+3.  **Proper cleanup**: `cancel.call` ensures no resource leaks
 
 ## Design Principles
 
 ### 1. One Pick, One Commit
+
 Every `Pick` instance can be decided at most once, ensuring exactly one event in a choice succeeds.
 
 ### 2. Zero Blocking in Registration
+
 `try_register` must never block - all blocking is deferred to `pick.wait`.
 
 ### 3. Fiber-Safe Cancellation
+
 Every registered event returns a cancellation procedure that can be safely called from any fiber.
 
 ### 4. Deterministic Behavior
+
 The system behaves predictably regardless of fiber scheduling order.
 
 ## Memory Safety
 
-- All event types are classes (not structs) to avoid recursion issues
-- Cancellation procedures clean up all registered state
-- Atomic operations prevent race conditions
-- Mutex protection for channel queue operations
+*   All event types are classes (not structs) to avoid recursion issues
+*   Cancellation procedures clean up all registered state
+*   Atomic operations prevent race conditions
+*   Mutex protection for channel queue operations
 
 ## Performance Characteristics
 
-- **Low overhead**: Event creation and registration are lightweight
-- **Scalable**: Designed to work efficiently with thousands of fibers
-- **GC-friendly**: Minimal allocations in hot paths
-- **Lock-free where possible**: Uses atomic operations for pick decisions
+* **Low overhead**: Event creation and registration are lightweight
+* **Scalable**: Designed to work efficiently with thousands of fibers
+* **GC-friendly**: Minimal allocations in hot paths
+* **Lock-free where possible**: Uses atomic operations for pick decisions
 
 This architecture provides a solid foundation for building complex concurrent coordination patterns while maintaining simplicity and correctness.
 

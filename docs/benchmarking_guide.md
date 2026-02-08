@@ -6,11 +6,11 @@ This guide explains how to run and interpret benchmarks for the Crystal Concurre
 
 The CML benchmarking system provides comprehensive performance measurement tools to:
 
-- **Measure latency** of individual operations (events, channels, choices)
-- **Track throughput** (operations per second) under load
-- **Monitor memory usage** and allocation patterns
-- **Compare performance** against baselines to detect regressions
-- **Test scaling** with different numbers of concurrent workers
+* **Measure latency** of individual operations (events, channels, choices)
+* **Track throughput** (operations per second) under load
+* **Monitor memory usage** and allocation patterns
+* **Compare performance** against baselines to detect regressions
+* **Test scaling** with different numbers of concurrent workers
 
 ## Current Benchmarking Status (Phase 2)
 
@@ -18,19 +18,19 @@ Based on the development plan in `plan.md`, we are currently in **Phase 2 - Perf
 
 ### ✅ Completed Benchmark Infrastructure
 
-- **Basic benchmark runner** (`src/benchmark/runner.cr`) with latency and throughput measurement
-- **Baseline management** (`src/benchmark/baseline_manager.cr`) for regression detection
-- **Multiple benchmark suites** in the `benchmarks/` directory
-- **Benchmark CLI** (`src/benchmark.cr`) for running and comparing benchmarks
-- **Test coverage** for benchmark infrastructure (`spec/benchmark_runner_spec.cr`)
+* **Basic benchmark runner** (`src/benchmark/runner.cr`) with latency and throughput measurement
+* **Baseline management** (`src/benchmark/baseline_manager.cr`) for regression detection
+* **Multiple benchmark suites** in the `benchmarks/` directory
+* **Benchmark CLI** (`src/benchmark.cr`) for running and comparing benchmarks
+* **Test coverage** for benchmark infrastructure (`spec/benchmark_runner_spec.cr`)
 
 ### 🎯 Phase 2 Targets Being Measured
 
-- [ ] **Event creation and cancellation overhead** - measured in `benchmarks/cml_benchmarks.cr`
-- [ ] **Heap allocations for short-lived events** - measured in `benchmarks/performance_benchmarks.cr`
-- [ ] **Channel operation performance** - measured across multiple benchmark files
-- [ ] **Worker scaling** with `CRYSTAL_WORKERS` > 1 - partially implemented
-- [ ] **Microbenchmarks comparing to Go channels** - TODO
+* [ ] **Event creation and cancellation overhead** - measured in `benchmarks/cml_benchmarks.cr`
+* [ ] **Heap allocations for short-lived events** - measured in `benchmarks/performance_benchmarks.cr`
+* [ ] **Channel operation performance** - measured across multiple benchmark files
+* [ ] **Worker scaling** with `CRYSTAL_WORKERS` > 1 - partially implemented
+* [ ] **Microbenchmarks comparing to Go channels** - TODO
 
 ## Running Benchmarks
 
@@ -86,53 +86,53 @@ crystal eval 'require "./benchmarks/cml_benchmarks"; CML::Benchmarks.benchmark_c
 
 Measure the time taken for individual operations:
 
-- **Event creation and synchronization** (`CML.always`, `CML.sync`)
-- **Channel operations** (send/recv round trips)
-- **Choice operations** with multiple alternatives
-- **Combinator overhead** (`wrap`, `guard`, `nack`)
+* **Event creation and synchronization** (`CML.always`, `CML.sync`)
+* **Channel operations** (send/recv round trips)
+* **Choice operations** with multiple alternatives
+* **Combinator overhead** (`wrap`, `guard`, `nack`)
 
 ### 2. Throughput Benchmarks
 
 Measure operations per second under sustained load:
 
-- **High-frequency event processing**
-- **Channel message passing rates**
-- **Concurrent choice operations**
+* **High-frequency event processing**
+* **Channel message passing rates**
+* **Concurrent choice operations**
 
 ### 3. Memory Benchmarks
 
 Track memory allocation patterns:
 
-- **Heap allocations per operation**
-- **GC pressure and frequency**
-- **Memory growth under load**
+* **Heap allocations per operation**
+* **GC pressure and frequency**
+* **Memory growth under load**
 
 ### 4. Scaling Benchmarks
 
 Test performance with different concurrency levels:
 
-- **Single worker vs multiple workers**
-- **Fiber count scaling**
-- **Channel contention patterns**
+* **Single worker vs multiple workers**
+* **Fiber count scaling**
+* **Channel contention patterns**
 
 ## Interpreting Results
 
 ### Key Metrics
 
-- **Mean latency**: Average operation time
-- **P95/P99 latency**: Tail latency for worst-case performance
-- **Throughput**: Operations per second
-- **Memory allocations**: Bytes allocated per operation
-- **GC impact**: Garbage collection frequency and duration
+* **Mean latency**: Average operation time
+* **P95/P99 latency**: Tail latency for worst-case performance
+* **Throughput**: Operations per second
+* **Memory allocations**: Bytes allocated per operation
+* **GC impact**: Garbage collection frequency and duration
 
 ### Performance Targets
 
 Based on Phase 2 goals:
 
-- **Event overhead**: < 1μs per basic event operation
-- **Channel round-trip**: < 10μs for send/recv pair
-- **Memory efficiency**: Minimal allocations for common patterns
-- **Scalability**: Linear or better scaling with worker count
+* **Event overhead**: < 1μs per basic event operation
+* **Channel round-trip**: < 10μs for send/recv pair
+* **Memory efficiency**: Minimal allocations for common patterns
+* **Scalability**: Linear or better scaling with worker count
 
 ### Regression Detection
 
@@ -150,7 +150,7 @@ Significant regressions (>10% performance degradation) should be investigated be
 
 ## Benchmark Files Structure
 
-```
+```text
 benchmarks/
 ├── cml_benchmarks.cr          # Comprehensive CML operation benchmarks
 ├── performance_benchmarks.cr  # Detailed performance metrics
@@ -215,31 +215,31 @@ Add your benchmark to the CLI in `src/benchmark.cr` if needed.
 
 ### Benchmarking Guidelines
 
-1. **Use release mode** for accurate performance measurements
-2. **Warm up** the system before measuring
-3. **Run multiple iterations** to get stable results
-4. **Measure both latency and throughput**
-5. **Test with realistic workloads**
-6. **Compare against baselines** to detect regressions
+1.  **Use release mode** for accurate performance measurements
+2.  **Warm up** the system before measuring
+3.  **Run multiple iterations** to get stable results
+4.  **Measure both latency and throughput**
+5.  **Test with realistic workloads**
+6.  **Compare against baselines** to detect regressions
 
 ### Performance Optimization Tips
 
 When optimizing based on benchmark results:
 
-- Focus on **hot paths** identified by profiling
-- Reduce **heap allocations** in performance-critical code
-- Use **atomic operations** and **Mutex** consistently
-- Verify **non-blocking invariants** after optimization
-- Test with **CRYSTAL_WORKERS > 1** for concurrency scaling
+* Focus on **hot paths** identified by profiling
+* Reduce **heap allocations** in performance-critical code
+* Use **atomic operations** and **Mutex** consistently
+* Verify **non-blocking invariants** after optimization
+* Test with **CRYSTAL_WORKERS > 1** for concurrency scaling
 
 ## Troubleshooting
 
 ### Common Issues
 
-- **High variance in results**: Increase iteration count or use longer measurement periods
-- **Memory leaks**: Check for proper event cleanup and cancellation
-- **Performance regressions**: Use baseline comparison to identify when regressions occurred
-- **Benchmark crashes**: Check for infinite loops or resource exhaustion
+* **High variance in results**: Increase iteration count or use longer measurement periods
+* **Memory leaks**: Check for proper event cleanup and cancellation
+* **Performance regressions**: Use baseline comparison to identify when regressions occurred
+* **Benchmark crashes**: Check for infinite loops or resource exhaustion
 
 ### Debugging Performance
 
@@ -313,10 +313,11 @@ CML::Tracer.set_filter_tags(["chan"])
 ```
 
 ### Best Practices
-- Use tags to isolate and group related trace points
-- Filter by tag or event to reduce noise and focus on the problem
-- Use fiber names to track specific concurrent operations
-- Always disable tracing in production for zero overhead
+
+*   Use tags to isolate and group related trace points
+*   Filter by tag or event to reduce noise and focus on the problem
+*   Use fiber names to track specific concurrent operations
+*   Always disable tracing in production for zero overhead
 
 See `src/trace_macro.cr` and the README for more details.
 
@@ -324,21 +325,21 @@ See `src/trace_macro.cr` and the README for more details.
 
 Based on Phase 2 goals, the following benchmarking improvements are planned:
 
-- [ ] Add microbenchmarks comparing to Go channels
-- [ ] Implement lock-free queue benchmarks for `Chan`
-- [ ] Add pooling benchmarks for `Pick` objects
-- [ ] Create stress tests with thousands of fibers
-- [ ] Add property-based testing for correctness under load
+*   [ ] Add microbenchmarks comparing to Go channels
+*   [ ] Implement lock-free queue benchmarks for `Chan`
+*   [ ] Add pooling benchmarks for `Pick` objects
+*   [ ] Create stress tests with thousands of fibers
+*   [ ] Add property-based testing for correctness under load
 
 ## Contributing
 
 When contributing performance improvements:
 
-1. **Run benchmarks before and after** changes
-2. **Document performance impact** in pull requests
-3. **Add new benchmarks** for new features
-4. **Update baselines** when performance characteristics change
-5. **Follow the AI guidance** in `plan.md` for optimization safety
+1.  **Run benchmarks before and after** changes
+2.  **Document performance impact** in pull requests
+3.  **Add new benchmarks** for new features
+4.  **Update baselines** when performance characteristics change
+5.  **Follow the AI guidance** in `plan.md` for optimization safety
 
 ---
 
@@ -346,11 +347,11 @@ When contributing performance improvements:
 
 To ensure no performance degradation as the codebase evolves, consider these harness improvements:
 
-- **Parameterized Runs**: Allow each scenario to accept parameters (e.g., fiber count, message size, event type).
-- **CSV/JSON Output**: Support outputting results in machine-readable formats for easier comparison and plotting.
-- **Scenario Tagging**: Tag scenarios by feature (e.g., `channel`, `timeout`, `choose`) to filter/select relevant tests.
-- **Automated Baseline Comparison**: Integrate scripts to compare current results to saved baselines and highlight regressions.
-- **Result Storage**: Store results in `benchmarks/results/` with filenames indicating branch, date, and scenario.
+* **Parameterized Runs**: Allow each scenario to accept parameters (e.g., fiber count, message size, event type).
+* **CSV/JSON Output**: Support outputting results in machine-readable formats for easier comparison and plotting.
+* **Scenario Tagging**: Tag scenarios by feature (e.g., `channel`, `timeout`, `choose`) to filter/select relevant tests.
+* **Automated Baseline Comparison**: Integrate scripts to compare current results to saved baselines and highlight regressions.
+* **Result Storage**: Store results in `benchmarks/results/` with filenames indicating branch, date, and scenario.
 
 ### Example: Saving and Comparing Results
 
@@ -367,11 +368,11 @@ colordiff -u benchmarks/results/results-main-20251027.txt benchmarks/results/res
 
 ### Checklist Before Merging Performance-Sensitive Changes
 
-- [ ] Run all benchmarks in release mode
-- [ ] Save results and compare to baseline/main
-- [ ] Investigate any regressions >5%
-- [ ] Document results in the pull request
-- [ ] Add/expand scenarios for new features or code paths
+*   [ ] Run all benchmarks in release mode
+*   [ ] Save results and compare to baseline/main
+*   [ ] Investigate any regressions >5%
+*   [ ] Document results in the pull request
+*   [ ] Add/expand scenarios for new features or code paths
 
 ---
 

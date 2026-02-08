@@ -51,24 +51,29 @@ CML::Tracer.set_output(File.open("trace.log", "w"))
 ## Debugging Scenarios
 
 ### 1. Finding Stuck or Slow Events
-- Tag and filter all send/receive operations on a channel.
-- Look for missing or delayed `committed`/`cancelled` outcomes.
+
+*   Tag and filter all send/receive operations on a channel.
+*   Look for missing or delayed `committed`/`cancelled` outcomes.
 
 ### 2. Diagnosing Race Conditions
-- Assign fiber names with `CML::Tracer.set_fiber_name("worker1")`.
-- Filter traces by fiber to see interleaving and event order.
+
+*   Assign fiber names with `CML::Tracer.set_fiber_name("worker1")`.
+*   Filter traces by fiber to see interleaving and event order.
 
 ### 3. Verifying Correctness
-- Trace all `Pick.committed` and `Pick.cancelled` events.
-- Ensure only one event in a choice is committed (CML invariant).
+
+*   Trace all `Pick.committed` and `Pick.cancelled` events.
+*   Ensure only one event in a choice is committed (CML invariant).
 
 ### 4. Reducing Trace Noise
-- Use tags and event filters to focus on the subsystem or operation of interest.
-- Redirect output to a file for offline analysis.
+
+*   Use tags and event filters to focus on the subsystem or operation of interest.
+*   Redirect output to a file for offline analysis.
 
 ## Real-World Trace Usage Examples
 
 ### Example 1: Debugging a Stuck Channel
+
 Suppose a sender or receiver is stuck and not completing:
 
 ```crystal
@@ -82,6 +87,7 @@ CML::Tracer.set_output(File.open("trace.log", "w"))
 Run your program and inspect `trace.log` for missing or delayed `send_committed` events.
 
 ### Example 2: Tracking a Specific Fiber
+
 If you want to follow a particular fiber's actions:
 
 ```crystal
@@ -91,6 +97,7 @@ CML::Tracer.set_filter_fibers(["worker1"])
 ```
 
 ### Example 3: Isolating a Subsystem
+
 If you have multiple subsystems, tag each:
 
 ```crystal
@@ -100,6 +107,7 @@ CML::Tracer.set_filter_tags(["timer"])
 ```
 
 ### Example 4: Debugging Choice Outcomes
+
 To ensure only one event in a choice is committed:
 
 ```crystal
@@ -111,12 +119,14 @@ CML::Tracer.set_filter_tags(["pick"])
 Check that for each choice, only one `committed` event appears per group of related event IDs.
 
 ## Best Practices
-- Use tags to isolate and group related trace points.
-- Filter by tag or event to reduce noise and focus on the problem.
-- Use fiber names to track specific concurrent operations.
-- Always disable tracing in production for zero overhead.
+
+*   Use tags to isolate and group related trace points.
+*   Filter by tag or event to reduce noise and focus on the problem.
+*   Use fiber names to track specific concurrent operations.
+*   Always disable tracing in production for zero overhead.
 
 ## Reference
-- See `src/trace_macro.cr` for tracing implementation and API.
-- See the Benchmarking Guide for performance-focused tracing tips.
-- See the README for general usage and API documentation.
+
+*   See `src/trace_macro.cr` for tracing implementation and API.
+*   See the Benchmarking Guide for performance-focused tracing tips.
+*   See the README for general usage and API documentation.
