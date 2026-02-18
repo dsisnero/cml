@@ -1,9 +1,11 @@
 # linda_tuple_space_system_from_book_chapter_9_043.cr - Compilation Issue
 
 ## Source File
+
 `/Users/dominic/repos/github.com/dsisnero/cml/examples/how_to/failing/linda_tuple_space_system_from_book_chapter_9_043.cr`
 
 ## Error
+
 ```text
 In examples/how_to/linda_tuple_space_system_from_book_chapter_9_043.cr:26:31
 
@@ -14,6 +16,7 @@ Error: unexpected token: "="
 ```
 
 ## Example Content
+
 ```crystal
 # linda_tuple_space_system_from_book_chapter_9_043.cr
 # Extracted from: how_to.md
@@ -431,10 +434,11 @@ dining_philosophers(5)
 ```
 
 ## Analysis Needed
-1. Identify the root cause of the compilation error
-2. Determine if it's a:
-   - Syntax issue in the example
-   - Missing dependency or require
-   - Type system limitation
-   - API change needed
-3. Propose a fix
+
+1.  Identify the root cause of the compilation error
+2.  Determine if it's a:
+    *   Syntax issue in the example
+    *   Missing dependency or require
+    *   Type system limitation
+    *   API change needed
+3.  Propose a fix

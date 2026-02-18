@@ -1,9 +1,11 @@
 # synchronization_primitives_016.cr - Compilation Issue
 
 ## Source File
+
 `/Users/dominic/repos/github.com/dsisnero/cml/examples/how_to/failing/synchronization_primitives_016.cr`
 
 ## Error
+
 ```text
 Showing last frame. Use --error-trace for full trace.
 
@@ -20,6 +22,7 @@ Overloads are:
 ```
 
 ## Example Content
+
 ```crystal
 # synchronization_primitives_016.cr
 # Extracted from: how_to.md
@@ -51,10 +54,11 @@ sleep 0.2
 ```
 
 ## Analysis Needed
-1. Identify the root cause of the compilation error
-2. Determine if it's a:
-   - Syntax issue in the example
-   - Missing dependency or require
-   - Type system limitation
-   - API change needed
-3. Propose a fix
+
+1.  Identify the root cause of the compilation error
+2.  Determine if it's a:
+    *   Syntax issue in the example
+    *   Missing dependency or require
+    *   Type system limitation
+    *   API change needed
+3.  Propose a fix

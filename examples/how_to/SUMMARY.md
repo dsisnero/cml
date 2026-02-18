@@ -1,9 +1,10 @@
 # Code Examples Summary
 
 ## Source
-- Markdown: `/Users/dominic/repos/github.com/dsisnero/cml/how_to.md`
-- Output: `/Users/dominic/repos/github.com/dsisnero/cml/examples/how_to`
-- Total examples: 43
+
+*   Markdown: `/Users/dominic/repos/github.com/dsisnero/cml/how_to.md`
+*   Output: `/Users/dominic/repos/github.com/dsisnero/cml/examples/how_to`
+*   Total examples: 43
 
 ## Examples
 

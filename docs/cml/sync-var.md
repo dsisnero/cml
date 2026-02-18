@@ -1,14 +1,21 @@
 # The SyncVar structure
 
-This document is adapted from the SML/NJ CML documentation (`sync-var.mldoc`) for the Crystal CML implementation.
+This document is adapted from the SML/NJ CML documentation (`sync-var.mldoc`)
+for the Crystal CML implementation.
 
 ## Overview
 
-The `SyncVar` structure provides Id-style synchronous variables (or memory cells). These variables have two states: *empty* and *full*. An attempt to read a value from an empty variable blocks the calling thread until there is a value available. An attempt to put a value into a variable that is full results in the `PutError` exception being raised.
+The `SyncVar` structure provides Id-style synchronous variables (or memory
+cells). These variables have two states: *empty* and *full*. An attempt to read
+a value from an empty variable blocks the calling thread until there is a value
+available. An attempt to put a value into a variable that is full results in the
+`PutError` exception being raised.
 
-There are two kinds of synchronous variables: I-variables are write-once, while M-variables are mutable.
+There are two kinds of synchronous variables: I-variables are write-once, while
+M-variables are mutable.
 
-In Crystal, these are implemented as `CML::IVar(T)` and `CML::MVar(T)` classes. Module functions are available via `CML.ivar`, `CML.mvar`, etc.
+In Crystal, these are implemented as `CML::IVar(T)` and `CML::MVar(T)` classes.
+Module functions are available via `CML.ivar`, `CML.mvar`, etc.
 
 ## Exception
 
@@ -18,8 +25,8 @@ In Crystal, these are implemented as `CML::IVar(T)` and `CML::MVar(T)` classes. 
 
 **Crystal**: `class PutError < Exception`
 
-**Description**:
-This exception is raised when an attempt is made to put a value into a variable that is already full (see `i_put` and `m_put`).
+**Description**: This exception is raised when an attempt is made to put a value
+into a variable that is already full (see `i_put` and `m_put`).
 
 ## I-Variables (Write-Once)
 
@@ -29,8 +36,11 @@ This exception is raised when an attempt is made to put a value into a variable 
 
 **Crystal**: `class CML::IVar(T)`
 
-**Description**:
-This is the type constructor for I-structured variables. I-structured variables are write-once variables that provide synchronization on read operations. They are especially useful for one-shot communications, such as reply messages in client/server protocols, and can also be used to implement shared *incremental* data structures.
+**Description**: This is the type constructor for I-structured variables.
+I-structured variables are write-once variables that provide synchronization on
+read operations. They are especially useful for one-shot communications, such as
+reply messages in client/server protocols, and can also be used to implement
+shared *incremental* data structures.
 
 ### `ivar`
 
@@ -62,8 +72,9 @@ ivar(Int32)  # returns IVar(Int32)
 def i_put(value : T) : Nil
 ```
 
-**Description**:
-Fills the I-variable `iv` with the value `value`. Any threads that are blocked on `iv` will be resumed. If `iv` already has a value in it, then the `PutError` exception is raised.
+**Description**: Fills the I-variable `iv` with the value `value`. Any threads
+that are blocked on `iv` will be resumed. If `iv` already has a value in it,
+then the `PutError` exception is raised.
 
 **Prototype**:
 
@@ -82,8 +93,8 @@ iv.i_put(x)
 def i_get : T
 ```
 
-**Description**:
-Returns the contents of the I-variable `iv`. If the variable is empty, then the calling thread blocks until the variable becomes full.
+**Description**: Returns the contents of the I-variable `iv`. If the variable is
+empty, then the calling thread blocks until the variable becomes full.
 
 **Prototype**:
 
@@ -122,8 +133,9 @@ iv.i_get_evt
 def i_get_poll : T?
 ```
 
-**Description**:
-This is a non-blocking version of `i_get`. If the corresponding blocking form would block, then it returns `nil`; otherwise it returns the variable's contents.
+**Description**: This is a non-blocking version of `i_get`. If the corresponding
+blocking form would block, then it returns `nil`; otherwise it returns the
+variable's contents.
 
 **Prototype**:
 
@@ -161,8 +173,9 @@ iv1.same?(iv2)
 
 **Crystal**: `class CML::MVar(T)`
 
-**Description**:
-This is the type constructor for M-structured variables. Unlike `IVar` values, M-structured variables may be updated multiple times. Like I-variables, however, they may only be written if they are empty.
+**Description**: This is the type constructor for M-structured variables. Unlike
+`IVar` values, M-structured variables may be updated multiple times. Like
+I-variables, however, they may only be written if they are empty.
 
 ### `mvar`
 
@@ -213,8 +226,9 @@ mvar_init(42)  # returns MVar(Int32) with value 42
 def m_put(value : T) : Nil
 ```
 
-**Description**:
-Fills the M-variable `mv` with the value `value`. Any threads that are blocked on `mv` will be resumed. If `mv` already has a value in it, then the `PutError` exception is raised.
+**Description**: Fills the M-variable `mv` with the value `value`. Any threads
+that are blocked on `mv` will be resumed. If `mv` already has a value in it,
+then the `PutError` exception is raised.
 
 **Prototype**:
 
@@ -233,8 +247,9 @@ mv.m_put(x)
 def m_take : T
 ```
 
-**Description**:
-Removes and returns the contents of the M-variable `mv` making it empty. If the variable is already empty, then the calling thread is blocked until a value is available.
+**Description**: Removes and returns the contents of the M-variable `mv` making
+it empty. If the variable is already empty, then the calling thread is blocked
+until a value is available.
 
 **Prototype**:
 
@@ -273,8 +288,9 @@ mv.m_take_evt
 def m_get : T
 ```
 
-**Description**:
-Returns the contents of the M-variable `mv` without emptying the variable; if the variable is empty, then the thread blocks until a value is available. It is equivalent to:
+**Description**: Returns the contents of the M-variable `mv` without emptying
+the variable; if the variable is empty, then the thread blocks until a value is
+available. It is equivalent to:
 
 ```crystal
 x = mv.m_take
@@ -323,8 +339,9 @@ def m_take_poll : T?
 def m_get_poll : T?
 ```
 
-**Description**:
-These are non-blocking versions of `m_take` and `m_get` (respectively). If the corresponding blocking form would block, then they return `nil`; otherwise they return the variable's contents.
+**Description**: These are non-blocking versions of `m_take` and `m_get`
+(respectively). If the corresponding blocking form would block, then they return
+`nil`; otherwise they return the variable's contents.
 
 **Prototype**:
 
@@ -344,8 +361,9 @@ mv.m_get_poll
 def m_swap(new_value : T) : T
 ```
 
-**Description**:
-Puts the value `new_value` into the M-variable `mv` and returns the previous contents. If the variable is empty, then the thread blocks until a value is available. It is equivalent to:
+**Description**: Puts the value `new_value` into the M-variable `mv` and returns
+the previous contents. If the variable is empty, then the thread blocks until a
+value is available. It is equivalent to:
 
 ```crystal
 x = mv.m_take
@@ -372,8 +390,8 @@ mv.m_swap(new_value)
 def m_swap_evt(new_value : T) : Event(T)
 ```
 
-**Description**:
-Returns an event-value that represents the `m_swap` operation on `mv` and `new_value`.
+**Description**: Returns an event-value that represents the `m_swap` operation
+on `mv` and `new_value`.
 
 **Prototype**:
 
@@ -405,9 +423,14 @@ mv1.same?(mv2)
 
 ## Usage Notes
 
-I-variables provide a useful mechanism for implementing the reply communication in request/reply protocols (in cases where the server does not care if the reply is accepted). They may also be used to implement incremental data structures and streams; for example, the `Multicast` structure uses I-variables to implement its multicast channels.
+I-variables provide a useful mechanism for implementing the reply communication
+in request/reply protocols (in cases where the server does not care if the reply
+is accepted). They may also be used to implement incremental data structures and
+streams; for example, the `Multicast` structure uses I-variables to implement
+its multicast channels.
 
-A disciplined use of M-variables can provide an atomic read-modify-write operation.
+A disciplined use of M-variables can provide an atomic read-modify-write
+operation.
 
 ## See Also
 

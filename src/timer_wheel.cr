@@ -118,6 +118,7 @@ module CML
     end
 
     private def add_timer_internal(timeout : Time::Span, interval : Time::Span?, callback : -> Nil) : UInt64
+      @current_time = CML.monotonic_milliseconds if @current_time == 0
       timeout_ticks = (timeout / @tick_duration).to_i.to_u64
       raise ArgumentError.new("Timeout must be positive") if timeout_ticks == 0
 

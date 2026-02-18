@@ -1,10 +1,12 @@
 # CML Benchmarking Guide
 
-This guide explains how to run and interpret benchmarks for the Crystal Concurrent ML (CML) library.
+This guide explains how to run and interpret benchmarks for the Crystal
+Concurrent ML (CML) library.
 
 ## Overview
 
-The CML benchmarking system provides comprehensive performance measurement tools to:
+The CML benchmarking system provides comprehensive performance measurement tools
+to:
 
 * **Measure latency** of individual operations (events, channels, choices)
 * **Track throughput** (operations per second) under load
@@ -14,21 +16,29 @@ The CML benchmarking system provides comprehensive performance measurement tools
 
 ## Current Benchmarking Status (Phase 2)
 
-Based on the development plan in `plan.md`, we are currently in **Phase 2 - Performance and Efficiency**. The following benchmarking infrastructure has been established:
+Based on the development plan in `plan.md`, we are currently in
+**Phase 2 - Performance and Efficiency**. The following benchmarking
+infrastructure has been established:
 
 ### ✅ Completed Benchmark Infrastructure
 
-* **Basic benchmark runner** (`src/benchmark/runner.cr`) with latency and throughput measurement
-* **Baseline management** (`src/benchmark/baseline_manager.cr`) for regression detection
+* **Basic benchmark runner** (`src/benchmark/runner.cr`) with latency and
+  throughput measurement
+* **Baseline management** (`src/benchmark/baseline_manager.cr`) for regression
+  detection
 * **Multiple benchmark suites** in the `benchmarks/` directory
 * **Benchmark CLI** (`src/benchmark.cr`) for running and comparing benchmarks
-* **Test coverage** for benchmark infrastructure (`spec/benchmark_runner_spec.cr`)
+* **Test coverage** for benchmark infrastructure
+  (`spec/benchmark_runner_spec.cr`)
 
 ### 🎯 Phase 2 Targets Being Measured
 
-* [ ] **Event creation and cancellation overhead** - measured in `benchmarks/cml_benchmarks.cr`
-* [ ] **Heap allocations for short-lived events** - measured in `benchmarks/performance_benchmarks.cr`
-* [ ] **Channel operation performance** - measured across multiple benchmark files
+* [ ] **Event creation and cancellation overhead** - measured in
+  `benchmarks/cml_benchmarks.cr`
+* [ ] **Heap allocations for short-lived events** - measured in
+  `benchmarks/performance_benchmarks.cr`
+* [ ] **Channel operation performance** - measured across multiple benchmark
+  files
 * [ ] **Worker scaling** with `CRYSTAL_WORKERS` > 1 - partially implemented
 * [ ] **Microbenchmarks comparing to Go channels** - TODO
 
@@ -146,7 +156,8 @@ crystal run src/benchmark.cr -- save-baseline v0.1.0
 crystal run src/benchmark.cr -- compare-baseline v0.1.0
 ```
 
-Significant regressions (>10% performance degradation) should be investigated before merging changes.
+Significant regressions (>10% performance degradation) should be investigated
+before merging changes.
 
 ## Benchmark Files Structure
 
@@ -236,9 +247,11 @@ When optimizing based on benchmark results:
 
 ### Common Issues
 
-* **High variance in results**: Increase iteration count or use longer measurement periods
+* **High variance in results**: Increase iteration count or use longer
+  measurement periods
 * **Memory leaks**: Check for proper event cleanup and cancellation
-* **Performance regressions**: Use baseline comparison to identify when regressions occurred
+* **Performance regressions**: Use baseline comparison to identify when
+  regressions occurred
 * **Benchmark crashes**: Check for infinite loops or resource exhaustion
 
 ### Debugging Performance
@@ -258,7 +271,9 @@ valgrind --leak-check=full ./benchmarks/performance_benchmarks
 
 ## Debugging Performance and Bugs with Tracing
 
-CML provides a powerful macro-based tracing system to help you find slow or buggy code paths. Tracing is zero-overhead when disabled, and highly configurable when enabled.
+CML provides a powerful macro-based tracing system to help you find slow or
+buggy code paths. Tracing is zero-overhead when disabled, and highly
+configurable when enabled.
 
 ### Enabling Tracing
 
@@ -270,7 +285,8 @@ crystal run benchmarks/cml_benchmarks.cr -Dtrace
 
 ### Using User-Defined Tags
 
-You can add a `tag:` argument to any `CML.trace` call to group or filter trace output. For example:
+You can add a `tag:` argument to any `CML.trace` call to group or filter trace
+output. For example:
 
 ```crystal
 CML.trace "Chan.register_send", value, pick, tag: "chan"
@@ -296,7 +312,8 @@ CML::Tracer.set_filter_fibers(["my_fiber_name"])
 
 ### Redirecting Trace Output
 
-By default, trace output goes to STDOUT. You can redirect it to a file or any IO:
+By default, trace output goes to STDOUT. You can redirect it to a file or any
+IO:
 
 ```crystal
 CML::Tracer.set_output(File.open("trace.log", "w"))
@@ -345,13 +362,19 @@ When contributing performance improvements:
 
 ## Advanced Benchmark Harness Design
 
-To ensure no performance degradation as the codebase evolves, consider these harness improvements:
+To ensure no performance degradation as the codebase evolves, consider these
+harness improvements:
 
-* **Parameterized Runs**: Allow each scenario to accept parameters (e.g., fiber count, message size, event type).
-* **CSV/JSON Output**: Support outputting results in machine-readable formats for easier comparison and plotting.
-* **Scenario Tagging**: Tag scenarios by feature (e.g., `channel`, `timeout`, `choose`) to filter/select relevant tests.
-* **Automated Baseline Comparison**: Integrate scripts to compare current results to saved baselines and highlight regressions.
-* **Result Storage**: Store results in `benchmarks/results/` with filenames indicating branch, date, and scenario.
+* **Parameterized Runs**: Allow each scenario to accept parameters (e.g., fiber
+  count, message size, event type).
+* **CSV/JSON Output**: Support outputting results in machine-readable formats
+  for easier comparison and plotting.
+* **Scenario Tagging**: Tag scenarios by feature (e.g., `channel`, `timeout`,
+  `choose`) to filter/select relevant tests.
+* **Automated Baseline Comparison**: Integrate scripts to compare current
+  results to saved baselines and highlight regressions.
+* **Result Storage**: Store results in `benchmarks/results/` with filenames
+  indicating branch, date, and scenario.
 
 ### Example: Saving and Comparing Results
 

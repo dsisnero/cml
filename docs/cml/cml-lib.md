@@ -1,6 +1,8 @@
 # CML Library Reference
 
-This document is adapted from the SML/NJ CML documentation (`cml-lib.mldoc`) for the Crystal CML implementation. The CML Library includes extended functionality beyond core CML, organized into substructures.
+This document is adapted from the SML/NJ CML documentation (`cml-lib.mldoc`) for
+the Crystal CML implementation. The CML Library includes extended functionality
+beyond core CML, organized into substructures.
 
 ## Overview
 
@@ -9,7 +11,8 @@ The CML Library provides additional concurrency abstractions and utilities:
 1.  **Multicast** - Multicast channels and ports for one-to-many communication
 2.  **TraceCML** - Debugging support with trace output and thread monitoring
 
-In Crystal, these are implemented as separate modules within the `CML` namespace.
+In Crystal, these are implemented as separate modules within the `CML`
+namespace.
 
 ## Included Modules
 

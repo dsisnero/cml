@@ -1,14 +1,21 @@
 # The CML structure
 
-This document is adapted from the SML/NJ CML documentation (`cml.mldoc`) for the Crystal CML implementation. Where the Crystal API differs from SML/NJ, notes are provided.
+This document is adapted from the SML/NJ CML documentation (`cml.mldoc`) for the
+Crystal CML implementation. Where the Crystal API differs from SML/NJ, notes are
+provided.
 
 ## Overview
 
-CML (Concurrent ML) provides first-class synchronous operations represented as event values (`Event(T)`). Only `CML.sync(evt)` blocks a fiber; event registration must remain non-blocking. The Crystal implementation follows SML/NJ semantics with adaptations for Crystal's type system and fiber-based concurrency.
+CML (Concurrent ML) provides first-class synchronous operations represented as
+event values (`Event(T)`). Only `CML.sync(evt)` blocks a fiber; event
+registration must remain non-blocking. The Crystal implementation follows SML/NJ
+semantics with adaptations for Crystal's type system and fiber-based
+concurrency.
 
 ## Namespace
 
-In Crystal, all CML functions are in the `CML` module. Thread-related types are in `CML::Thread`.
+In Crystal, all CML functions are in the `CML` module. Thread-related types are
+in `CML::Thread`.
 
 ## Types
 
@@ -47,8 +54,9 @@ These specify the version of CML in a format similar to SML/NJ.
 def self.spawnc(arg : A, &block : A -> Nil) : Thread::Id forall A
 ```
 
-**Description**:
-Creates a new thread of control to evaluate the body of the block with argument `arg`. A new unique ID for the thread is created and returned.
+**Description**: Creates a new thread of control to evaluate the body of the
+block with argument `arg`. A new unique ID for the thread is created and
+returned.
 
 **Prototype**:
 
@@ -85,8 +93,10 @@ spawn { ... }
 def self.yield : Nil
 ```
 
-**Description**:
-This function can be used to implement an explicit context switch. Since Crystal CML uses cooperative fiber scheduling (not preemptive), this function may be more useful than in SML/NJ for explicit yielding. It is also used for performance measurements.
+**Description**: This function can be used to implement an explicit context
+switch. Since Crystal CML uses cooperative fiber scheduling (not preemptive),
+this function may be more useful than in SML/NJ for explicit yielding. It is
+also used for performance measurements.
 
 ### `exit`
 
@@ -155,8 +165,10 @@ same_tid(tid1, tid2)
 def self.compare_tid(tid1 : Thread::Id, tid2 : Thread::Id) : Int32
 ```
 
-**Description**:
-Compares the two thread IDs and returns their order in the total ordering of thread IDs. Returns -1 if `tid1 < tid2`, 0 if equal, 1 if `tid1 > tid2`. The precise semantics of this ordering is left unspecified, other than to say it is a total order.
+**Description**: Compares the two thread IDs and returns their order in the
+total ordering of thread IDs. Returns -1 if `tid1 < tid2`, 0 if equal, 1 if
+`tid1 > tid2`. The precise semantics of this ordering is left unspecified, other
+than to say it is a total order.
 
 **Prototype**:
 
@@ -212,8 +224,12 @@ tid_to_string(tid)
 def self.join_evt(tid : Thread::Id) : Event(Nil)
 ```
 
-**Description**:
-Creates an event value for synchronizing on the termination of the thread with the ID `tid`. There are three ways that a thread may terminate: the block passed to `spawn` (or `spawnc`) may return; it may call the `exit` function, or it may have an uncaught exception. Note that `join_evt` does not distinguish between these cases; it also does not become enabled if the named thread deadlocks (even if it is garbage collected).
+**Description**: Creates an event value for synchronizing on the termination of
+the thread with the ID `tid`. There are three ways that a thread may terminate:
+the block passed to `spawn` (or `spawnc`) may return; it may call the `exit`
+function, or it may have an uncaught exception. Note that `join_evt` does not
+distinguish between these cases; it also does not become enabled if the named
+thread deadlocks (even if it is garbage collected).
 
 **Prototype**:
 
@@ -233,8 +249,8 @@ join_evt(tid)
 def self.channel(type : T.class) : Chan(T) forall T
 ```
 
-**Description**:
-Creates a new synchronous channel. Note: Crystal requires explicit type parameter.
+**Description**: Creates a new synchronous channel. Note: Crystal requires
+explicit type parameter.
 
 **Prototype**:
 
@@ -275,8 +291,10 @@ def send(value : T) : Nil
 CML.sync(ch.send_evt(value))
 ```
 
-**Description**:
-Sends the message `value` on the synchronous channel `ch`. This operation blocks the calling thread until there is another thread attempting to receive a message from the channel `ch`, at which point the receiving thread gets the message and both threads continue execution.
+**Description**: Sends the message `value` on the synchronous channel `ch`. This
+operation blocks the calling thread until there is another thread attempting to
+receive a message from the channel `ch`, at which point the receiving thread
+gets the message and both threads continue execution.
 
 **Prototype**:
 
@@ -298,8 +316,9 @@ def recv : T
 CML.sync(ch.recv_evt)
 ```
 
-**Description**:
-Receives a message from the channel `ch`. This operation blocks the calling thread until there is another thread attempting to send a message on the channel `ch`, at which point both threads continue execution.
+**Description**: Receives a message from the channel `ch`. This operation blocks
+the calling thread until there is another thread attempting to send a message on
+the channel `ch`, at which point both threads continue execution.
 
 **Prototype**:
 
@@ -358,8 +377,11 @@ ch.recv_evt
 def send_poll(value : T) : Bool
 ```
 
-**Description**:
-Attempts to send the message `value` on the synchronous channel `ch`. If this operation can complete without blocking the calling thread, then the message is sent and `true` is returned. Otherwise, no communication is performed and `false` is returned. This function is not recommended for general use; it is provided as an efficiency aid for certain kinds of protocols.
+**Description**: Attempts to send the message `value` on the synchronous channel
+`ch`. If this operation can complete without blocking the calling thread, then
+the message is sent and `true` is returned. Otherwise, no communication is
+performed and `false` is returned. This function is not recommended for general
+use; it is provided as an efficiency aid for certain kinds of protocols.
 
 **Prototype**:
 
@@ -378,8 +400,10 @@ ch.send_poll(msg)
 def recv_poll : T?
 ```
 
-**Description**:
-Attempts to receive a message from the channel `ch`. If there is no other thread offering to `send` a message on `ch`, then this returns `nil`, otherwise it returns the message. This function is not recommended for general use; it is provided as an efficiency aid for certain kinds of protocols.
+**Description**: Attempts to receive a message from the channel `ch`. If there
+is no other thread offering to `send` a message on `ch`, then this returns
+`nil`, otherwise it returns the message. This function is not recommended for
+general use; it is provided as an efficiency aid for certain kinds of protocols.
 
 **Prototype**:
 
@@ -410,7 +434,8 @@ wrap(evt) { |x| ... }
 
 ### `wrap_handler`
 
-**SML signature**: `val wrapHandler : ('a event * (exn -> 'a event)) -> 'a event`
+**SML signature**:
+`val wrapHandler : ('a event * (exn -> 'a event)) -> 'a event`
 
 **Crystal equivalent**:
 
@@ -418,8 +443,12 @@ wrap(evt) { |x| ... }
 def self.wrap_handler(evt : Event(T), &handler : Exception -> T) : Event(T) forall T
 ```
 
-**Description**:
-Wraps the exception handler function `handler` around the event value `evt`. If, during execution of some post-synchronization action in `evt`, an exception is raised, it will be caught and passed to `handler`. Nesting of handlers works as would be expected: the innermost handler is the first one invoked. Note that exceptions raised in the pre-synchronization actions in `evt` (i.e., actions defined by `guard` and `with_nack`) are not handled by `handler`.
+**Description**: Wraps the exception handler function `handler` around the event
+value `evt`. If, during execution of some post-synchronization action in `evt`,
+an exception is raised, it will be caught and passed to `handler`. Nesting of
+handlers works as would be expected: the innermost handler is the first one
+invoked. Note that exceptions raised in the pre-synchronization actions in `evt`
+(i.e., actions defined by `guard` and `with_nack`) are not handled by `handler`.
 
 **Prototype**:
 
@@ -437,8 +466,11 @@ wrap_handler(evt) { |exn| ... }
 def self.guard(&block : -> Event(T)) : Event(T) forall T
 ```
 
-**Description**:
-Creates a *delayed* event value from the block `block`. When the resulting event value is synchronized on, the block will be evaluated and the resulting event value will be used in its place in the synchronization. This provides a mechanism for implementing pre-synchronization actions, such as sending a request to a server.
+**Description**: Creates a *delayed* event value from the block `block`. When
+the resulting event value is synchronized on, the block will be evaluated and
+the resulting event value will be used in its place in the synchronization. This
+provides a mechanism for implementing pre-synchronization actions, such as
+sending a request to a server.
 
 **Prototype**:
 
@@ -456,8 +488,14 @@ guard { ... }
 def self.with_nack(&f : Event(Nil) -> Event(T)) : Event(T) forall T
 ```
 
-**Description**:
-Creates a *delayed* event value from the function `f`. As in the case of `guard`, the function `f` will be evaluated at synchronization time and the resulting event value will be used in its place in the synchronization. Furthermore, when `f` is evaluated, it is passed a *negative acknowledgement* event as an argument. This negative acknowledgement event is enabled in the case where some other event involved in the synchronization is chosen instead of the one produced by `f`. The `with_nack` combinator provides a mechanism for informing servers that a client has aborted a transaction.
+**Description**: Creates a *delayed* event value from the function `f`. As in
+the case of `guard`, the function `f` will be evaluated at synchronization time
+and the resulting event value will be used in its place in the synchronization.
+Furthermore, when `f` is evaluated, it is passed a *negative acknowledgement*
+event as an argument. This negative acknowledgement event is enabled in the case
+where some other event involved in the synchronization is chosen instead of the
+one produced by `f`. The `with_nack` combinator provides a mechanism for
+informing servers that a client has aborted a transaction.
 
 **Prototype**:
 
@@ -476,8 +514,8 @@ def self.choose(events : Array(Event(T))) : Event(T) forall T
 def self.choose(*events : Event(T)) : Event(T) forall T
 ```
 
-**Description**:
-Constructs an event value that represents the non-deterministic choice of the events in the list `events`.
+**Description**: Constructs an event value that represents the non-deterministic
+choice of the events in the list `events`.
 
 **Prototype**:
 
@@ -515,8 +553,9 @@ sync(evt)
 def self.select(events : Array(Event(T))) : T forall T
 ```
 
-**Description**:
-Synchronizes on the non-deterministic choice of the events in the list `events`. It is semantically equivalent to `sync(choose(events))` but is more efficient.
+**Description**: Synchronizes on the non-deterministic choice of the events in
+the list `events`. It is semantically equivalent to `sync(choose(events))` but
+is more efficient.
 
 **Prototype**:
 
@@ -535,8 +574,8 @@ def self.never(type : T.class) : Event(T) forall T
 def self.never : Event(Nil)
 ```
 
-**Description**:
-An event value that is never enabled for synchronization. It is semantically equivalent to `choose([])`.
+**Description**: An event value that is never enabled for synchronization. It is
+semantically equivalent to `choose([])`.
 
 **Prototype**:
 
@@ -555,8 +594,8 @@ never         # Event(Nil) that never enables (convenience)
 def self.always(x : T) : Event(T) forall T
 ```
 
-**Description**:
-Creates an event value that is always enabled, and that returns the value `x` upon synchronization.
+**Description**: Creates an event value that is always enabled, and that returns
+the value `x` upon synchronization.
 
 **Prototype**:
 
@@ -574,8 +613,11 @@ always(value)
 def self.timeout(duration : Time::Span) : Event(Nil)
 ```
 
-**Description**:
-Creates an event value that becomes enabled at the time interval `duration` after synchronization. For example, the expression `sync(timeout(1.second))` will delay the calling thread for one second. Note that the specified time interval is actually a minimum waiting time, and the delay may be longer.
+**Description**: Creates an event value that becomes enabled at the time
+interval `duration` after synchronization. For example, the expression
+`sync(timeout(1.second))` will delay the calling thread for one second. Note
+that the specified time interval is actually a minimum waiting time, and the
+delay may be longer.
 
 **Prototype**:
 
@@ -593,8 +635,9 @@ timeout(5.seconds)
 def self.at_time(target_time : Time) : Event(Nil)
 ```
 
-**Description**:
-Creates an event value that becomes enabled at the specified time `target_time`. For example, the expression blocks the calling thread until the specified absolute time.
+**Description**: Creates an event value that becomes enabled at the specified
+time `target_time`. For example, the expression blocks the calling thread until
+the specified absolute time.
 
 **Prototype**:
 
@@ -604,7 +647,8 @@ at_time(Time.utc(2026, 1, 1, 0, 0, 0))
 
 ## Additional Crystal Functions
 
-The Crystal CML implementation includes several convenience functions not present in SML/NJ:
+The Crystal CML implementation includes several convenience functions not
+present in SML/NJ:
 
 ### `after`
 
@@ -612,7 +656,8 @@ The Crystal CML implementation includes several convenience functions not presen
 def self.after(duration : Time::Span, &block : -> T) : Event(T) forall T
 ```
 
-Creates a timeout event that, when synchronized, executes the block and returns its result.
+Creates a timeout event that, when synchronized, executes the block and returns
+its result.
 
 ### `sleep`
 
@@ -628,7 +673,8 @@ Convenience function that synchronizes on a timeout event.
 def self.spawn_evt(&block : -> Nil) : Event(Thread::Id)
 ```
 
-Creates an event that, when synchronized, spawns a new thread executing the block.
+Creates an event that, when synchronized, spawns a new thread executing the
+block.
 
 ### `nack`
 

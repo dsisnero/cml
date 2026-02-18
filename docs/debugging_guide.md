@@ -1,10 +1,14 @@
 # CML Debugging Guide
 
-This guide explains how to use the CML tracing system to debug code that is not working as expected—whether due to logic bugs, race conditions, or performance issues.
+This guide explains how to use the CML tracing system to debug code that is not
+working as expected—whether due to logic bugs, race conditions, or performance
+issues.
 
 ## Overview
 
-CML's tracing system provides deep visibility into event registration, commit/cancel outcomes, fiber context, and channel operations. It is designed for both correctness debugging and performance analysis.
+CML's tracing system provides deep visibility into event registration,
+commit/cancel outcomes, fiber context, and channel operations. It is designed
+for both correctness debugging and performance analysis.
 
 ## Enabling Tracing
 
@@ -84,7 +88,8 @@ CML::Tracer.set_filter_tags(["chan"])
 CML::Tracer.set_output(File.open("trace.log", "w"))
 ```
 
-Run your program and inspect `trace.log` for missing or delayed `send_committed` events.
+Run your program and inspect `trace.log` for missing or delayed `send_committed`
+events.
 
 ### Example 2: Tracking a Specific Fiber
 
@@ -116,7 +121,8 @@ CML.trace "Pick.cancelled", event_id, tag: "pick"
 CML::Tracer.set_filter_tags(["pick"])
 ```
 
-Check that for each choice, only one `committed` event appears per group of related event IDs.
+Check that for each choice, only one `committed` event appears per group of
+related event IDs.
 
 ## Best Practices
 

@@ -157,7 +157,7 @@ describe CML do
       result = CML.sync(CML.choose(ch1.recv_evt, ch2.recv_evt))
       Fiber.yield
 
-       result.should eq(2) # ch2 sends immediately
+      result.should eq(2) # ch2 sends immediately
     end
 
     it "works with heterogeneous event types (duck typing)" do
@@ -184,7 +184,7 @@ describe CML do
       choice = CML.choose(ch.recv_evt, CML.timeout(10.milliseconds))
       result = CML.sync(choice)
 
-      result.should be_nil  # timeout returns nil
+      result.should be_nil # timeout returns nil
     end
 
     it "works with three different event types" do
@@ -254,28 +254,28 @@ describe CML do
         break if shutdown_ch.closed?
       end
 
-       # If we got here without error, the test passed
-       true.should be_true
-     end
+      # If we got here without error, the test passed
+      true.should be_true
+    end
 
-     it "works with varargs and heterogeneous event types" do
-       ch_int = CML::Chan(Int32).new
-       ch_str = CML::Chan(String).new
+    it "works with varargs and heterogeneous event types" do
+      ch_int = CML::Chan(Int32).new
+      ch_str = CML::Chan(String).new
 
-       spawn do
-         sleep 5.milliseconds
-         ch_str.send("hello")
-       end
+      spawn do
+        sleep 5.milliseconds
+        ch_str.send("hello")
+      end
 
-       # Using varargs select with heterogeneous types
-       result = CML.select(ch_int.recv_evt, ch_str.recv_evt)
-       Fiber.yield
+      # Using varargs select with heterogeneous types
+      result = CML.select(ch_int.recv_evt, ch_str.recv_evt)
+      Fiber.yield
 
-       result.should eq("hello")
-     end
-   end
+      result.should eq("hello")
+    end
+  end
 
-   describe "timeout" do
+  describe "timeout" do
     # Note: These tests pass individually but may fail when run in sequence
     # due to fiber scheduling interactions from previous tests
     it "fires after the specified duration" do

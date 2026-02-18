@@ -1,6 +1,8 @@
 # CML Cookbook: Idioms for Concurrent Coordination
 
-This cookbook provides practical patterns and recipes for using the CML library in Crystal. Each idiom demonstrates a common concurrency scenario using CML events, channels, and helpers.
+This cookbook provides practical patterns and recipes for using the CML library
+in Crystal. Each idiom demonstrates a common concurrency scenario using CML
+events, channels, and helpers.
 
 ## 1. Timeout with after
 

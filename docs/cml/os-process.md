@@ -1,12 +1,17 @@
 # The OS.Process structure
 
-This document is adapted from the SML/NJ CML documentation (`os-process.mldoc`) for the Crystal CML implementation. The OS.Process structure provides event-based process creation and management.
+This document is adapted from the SML/NJ CML documentation (`os-process.mldoc`)
+for the Crystal CML implementation. The OS.Process structure provides
+event-based process creation and management.
 
 ## Overview
 
-In SML/NJ CML, `OS.Process` provides a `systemEvt` function that executes a system command and returns an event that becomes enabled when the sub-process terminates. This allows non-blocking execution of external commands.
+In SML/NJ CML, `OS.Process` provides a `systemEvt` function that executes a
+system command and returns an event that becomes enabled when the sub-process
+terminates. This allows non-blocking execution of external commands.
 
-Crystal CML provides similar functionality through the `CML::Process` module (not nested under `OS` for simplicity).
+Crystal CML provides similar functionality through the `CML::Process` module
+(not nested under `OS` for simplicity).
 
 ## Namespace
 
@@ -29,7 +34,9 @@ def self.system_evt(command : String) : Event(Process::Status)
 
 **Description**:
 
-Executes a system command as a sub-process and returns an event that becomes enabled when the sub-process terminates. The event value is the exit status of the command. Raises `OS.SysErr` if the command cannot be executed.
+Executes a system command as a sub-process and returns an event that becomes
+enabled when the sub-process terminates. The event value is the exit status of
+the command. Raises `OS.SysErr` if the command cannot be executed.
 
 **Crystal implementation**:
 
@@ -70,7 +77,8 @@ end
 
 ## Error Handling
 
-SML/NJ raises `OS.SysErr` if the command cannot be executed. Crystal raises `IO::Error` or `Errno` exceptions for execution failures.
+SML/NJ raises `OS.SysErr` if the command cannot be executed. Crystal raises
+`IO::Error` or `Errno` exceptions for execution failures.
 
 ```crystal
 begin
@@ -82,7 +90,8 @@ end
 
 ## Nack Support
 
-The Crystal implementation includes nack (negative acknowledgment) support, allowing the sub-process to be terminated if another branch of a `choose` wins:
+The Crystal implementation includes nack (negative acknowledgment) support,
+allowing the sub-process to be terminated if another branch of a `choose` wins:
 
 ```crystal
 choice = CML.choose(
@@ -98,7 +107,8 @@ result = CML.sync(choice)
 
 When porting SML/NJ code that uses `OS.Process.systemEvt`:
 
-1.  **Namespace**: Use `CML::Process.system_evt` instead of `OS.Process.systemEvt`
+1.  **Namespace**: Use `CML::Process.system_evt` instead of
+   `OS.Process.systemEvt`
 2.  **Status type**: Returns `Process::Status` instead of SML's `status` type
 3.  **Error handling**: Catch `IO::Error` instead of `OS.SysErr`
 4.  **Shell interpretation**: Commands are executed via shell (same as SML/NJ)
@@ -133,7 +143,8 @@ Crystal's `CML::Process` module may be extended with additional functionality:
 *   [OS Documentation](os.md) - OS structure overview
 *   [CML Documentation](cml.md) - Core CML functions
 *   [Crystal CML Manual](../cml_manual.md) - High-level overview
-*   [SML/NJ OS.Process Documentation](https://www.smlnj.org/doc/) - Original documentation
+*   [SML/NJ OS.Process Documentation](https://www.smlnj.org/doc/) - Original
+  documentation
 
 ---
 

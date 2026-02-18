@@ -1,12 +1,16 @@
 # CML Overview — Event Semantics and Architecture
 
-This document provides a deep dive into the Concurrent ML (CML) runtime implementation in Crystal, explaining the core concepts, event semantics, and architectural decisions.
+This document provides a deep dive into the Concurrent ML (CML) runtime
+implementation in Crystal, explaining the core concepts, event semantics, and
+architectural decisions.
 
 ## Core Concepts
 
 ### Events and Synchronization
 
-In CML, an **Event** represents a potential synchronization point that may produce a value when committed. The key insight is that events are **first-class** - they can be composed, transformed, and chosen between.
+In CML, an **Event** represents a potential synchronization point that may
+produce a value when committed. The key insight is that events are
+**first-class** - they can be composed, transformed, and chosen between.
 
 ```crystal
 abstract class Event(T)
@@ -43,7 +47,8 @@ class Pick(T)
 end
 ```
 
-This atomic commit mechanism guarantees the "one pick, one commit" principle - exactly one event in a `choose` will succeed.
+This atomic commit mechanism guarantees the "one pick, one commit" principle -
+exactly one event in a `choose` will succeed.
 
 ## Event Types
 
@@ -58,7 +63,8 @@ This atomic commit mechanism guarantees the "one pick, one commit" principle - e
 * **`SendEvt(T)`**: Attempts to send a value on a channel
 * **`RecvEvt(T)`**: Attempts to receive from a channel
 
-Channels maintain separate queues for senders and receivers, matching them when both are available:
+Channels maintain separate queues for senders and receivers, matching them when
+both are available:
 
 ```crystal
 def register_send(value : T, pick : Pick(Nil)) : Proc(Nil)
@@ -174,7 +180,8 @@ This protocol ensures:
 
 ### 1. One Pick, One Commit
 
-Every `Pick` instance can be decided at most once, ensuring exactly one event in a choice succeeds.
+Every `Pick` instance can be decided at most once, ensuring exactly one event in
+a choice succeeds.
 
 ### 2. Zero Blocking in Registration
 
@@ -182,7 +189,8 @@ Every `Pick` instance can be decided at most once, ensuring exactly one event in
 
 ### 3. Fiber-Safe Cancellation
 
-Every registered event returns a cancellation procedure that can be safely called from any fiber.
+Every registered event returns a cancellation procedure that can be safely
+called from any fiber.
 
 ### 4. Deterministic Behavior
 
@@ -202,7 +210,8 @@ The system behaves predictably regardless of fiber scheduling order.
 * **GC-friendly**: Minimal allocations in hot paths
 * **Lock-free where possible**: Uses atomic operations for pick decisions
 
-This architecture provides a solid foundation for building complex concurrent coordination patterns while maintaining simplicity and correctness.
+This architecture provides a solid foundation for building complex concurrent
+coordination patterns while maintaining simplicity and correctness.
 
 ---
 

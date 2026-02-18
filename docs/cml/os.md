@@ -1,16 +1,20 @@
 # The OS structure
 
-This document is adapted from the SML/NJ CML documentation (`os.mldoc`) for the Crystal CML implementation. The OS structure provides operating system interfaces for file systems, directories, processes, and I/O subsystems.
+This document is adapted from the SML/NJ CML documentation (`os.mldoc`) for the
+Crystal CML implementation. The OS structure provides operating system
+interfaces for file systems, directories, processes, and I/O subsystems.
 
 ## Overview
 
-In SML/NJ CML, the `OS` structure is a container for substructures that interact with the operating system:
+In SML/NJ CML, the `OS` structure is a container for substructures that interact
+with the operating system:
 
 * **OS** - Top-level container (maps to `CML::OS` module in Crystal)
 * **OS.Process** - Process creation and management (`CML::OS::Process`)
 * **OS.IO** - I/O event operations (`CML::OS::IO`)
 
-Crystal's CML implementation provides similar functionality through dedicated modules, though the exact API differs from SML/NJ.
+Crystal's CML implementation provides similar functionality through dedicated
+modules, though the exact API differs from SML/NJ.
 
 ## Namespace
 
@@ -26,7 +30,9 @@ In Crystal, OS-related functionality is distributed across several modules:
 
 ## OS Container Structure
 
-The `OS` structure itself contains no functions in SML/NJ; it serves only as a namespace for substructures. In Crystal, the `CML::OS` module is similarly a namespace container.
+The `OS` structure itself contains no functions in SML/NJ; it serves only as a
+namespace for substructures. In Crystal, the `CML::OS` module is similarly a
+namespace container.
 
 ```crystal
 module CML::OS
@@ -36,9 +42,11 @@ end
 
 ## OS.Process Substructure
 
-Process operations allow creating and managing child processes. In SML/NJ, this includes functions like `execute`, `system`, `exit`, etc.
+Process operations allow creating and managing child processes. In SML/NJ, this
+includes functions like `execute`, `system`, `exit`, etc.
 
-Crystal provides process operations through the `CML::OS::Process` module (or directly via Crystal's `Process` class for non-event operations).
+Crystal provides process operations through the `CML::OS::Process` module (or
+directly via Crystal's `Process` class for non-event operations).
 
 ```crystal
 module CML::OS::Process
@@ -55,9 +63,11 @@ end
 
 ## OS.IO Substructure
 
-I/O operations provide event-based versions of file and stream operations. In SML/NJ, this includes functions like `openIn`, `openOut`, `close`, etc.
+I/O operations provide event-based versions of file and stream operations. In
+SML/NJ, this includes functions like `openIn`, `openOut`, `close`, etc.
 
-Crystal provides I/O events through the `CML::IOEvents` module (which is not under `CML::OS` for historical reasons).
+Crystal provides I/O events through the `CML::IOEvents` module (which is not
+under `CML::OS` for historical reasons).
 
 ```crystal
 module CML::IOEvents
@@ -80,7 +90,9 @@ end
 
 ## File System Operations
 
-SML/NJ's `OS.FileSys` structure provides file system operations. In Crystal, these are available through `CML::IOEvents` and Crystal's standard `File` and `Dir` classes.
+SML/NJ's `OS.FileSys` structure provides file system operations. In Crystal,
+these are available through `CML::IOEvents` and Crystal's standard `File` and
+`Dir` classes.
 
 ```crystal
 # Check if file exists (non-blocking)
@@ -95,7 +107,8 @@ CML::IOEvents.read_dir(path : String) : Event(Array(String))
 
 ## Path Operations
 
-SML/NJ's `OS.Path` structure provides path manipulation functions. Crystal provides similar functionality through `File` and `Path` classes.
+SML/NJ's `OS.Path` structure provides path manipulation functions. Crystal
+provides similar functionality through `File` and `Path` classes.
 
 ```crystal
 # Join path components
@@ -117,7 +130,8 @@ When porting SML/NJ CML code that uses the `OS` structure:
 3.  **File system operations**: Use `CML::IOEvents` or Crystal's `File`/`Dir`
 4.  **Path operations**: Use Crystal's `File` and `Path` methods directly
 
-Many OS operations in Crystal are synchronous; use `CML.spawn` to run them in a separate fiber if needed.
+Many OS operations in Crystal are synchronous; use `CML.spawn` to run them in a
+separate fiber if needed.
 
 ## See Also
 

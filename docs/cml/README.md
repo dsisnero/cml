@@ -1,6 +1,8 @@
 # Crystal CML Documentation (SML/NJ Parity)
 
-This directory contains documentation adapted from the SML/NJ CML library, converted to markdown format and updated to reflect the Crystal CML implementation.
+This directory contains documentation adapted from the SML/NJ CML library,
+converted to markdown format and updated to reflect the Crystal CML
+implementation.
 
 ## File Mapping
 
@@ -38,7 +40,8 @@ When converting SML/NJ ML-DOC to markdown:
     *   `sameChannel` → `same_channel`
     *   `iGetEvt` → `i_get_evt`
     *   `wrapHandler` → `wrap_handler`
-4.  **Add Crystal-specific notes**: Document namespace differences, additional functions
+4.  **Add Crystal-specific notes**: Document namespace differences, additional
+   functions
 5.  **Include prototypes**: Show usage examples with Crystal syntax
 6.  **Cross-reference**: Link to other converted documents
 
@@ -59,7 +62,8 @@ In Crystal, CML functionality is organized differently than in SML/NJ:
 
 ## Additional Crystal Features
 
-The Crystal CML implementation includes several extensions not present in SML/NJ:
+The Crystal CML implementation includes several extensions not present in
+SML/NJ:
 
 *   `CML.after(duration, &block)` - Timeout with block execution
 *   `CML.sleep(duration)` - Convenience sleep function
@@ -81,7 +85,8 @@ To convert additional ML-DOC files:
 ## See Also
 
 *   [Crystal CML Manual](../cml_manual.md) - High-level overview of Crystal CML
-*   [SML/NJ CML Documentation](https://www.smlnj.org/doc/) - Original documentation
+*   [SML/NJ CML Documentation](https://www.smlnj.org/doc/) - Original
+  documentation
 *   [Crystal CML Source Code](../../src/cml/) - Implementation source
 
 ---

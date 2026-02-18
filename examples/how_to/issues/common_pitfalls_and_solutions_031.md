@@ -1,9 +1,11 @@
 # common_pitfalls_and_solutions_031.cr - Compilation Issue
 
 ## Source File
+
 `/Users/dominic/repos/github.com/dsisnero/cml/examples/how_to/failing/common_pitfalls_and_solutions_031.cr`
 
 ## Error
+
 ```text
 Showing last frame. Use --error-trace for full trace.
 
@@ -20,6 +22,7 @@ Overloads are:
 ```
 
 ## Example Content
+
 ```crystal
 # common_pitfalls_and_solutions_031.cr
 # Extracted from: how_to.md
@@ -76,10 +79,11 @@ sleep 0.1  # Allow threads to run
 ```
 
 ## Analysis Needed
-1. Identify the root cause of the compilation error
-2. Determine if it's a:
-   - Syntax issue in the example
-   - Missing dependency or require
-   - Type system limitation
-   - API change needed
-3. Propose a fix
+
+1.  Identify the root cause of the compilation error
+2.  Determine if it's a:
+    *   Syntax issue in the example
+    *   Missing dependency or require
+    *   Type system limitation
+    *   API change needed
+3.  Propose a fix

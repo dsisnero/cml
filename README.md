@@ -1,14 +1,21 @@
 ## 10. Tracing & Instrumentation
 
-CML includes a macro-based tracing system for debugging and performance analysis:
+CML includes a macro-based tracing system for debugging and performance
+analysis:
 
-- **Zero-overhead when disabled**: Tracing is compiled out unless `-Dtrace` is passed.
-- **Event IDs**: Every event and pick has a unique ID for correlation.
-- **Fiber context**: Trace output includes the current fiber (or user-assigned fiber name).
-- **Outcome tracing**: Commit/cancel outcomes are logged for all key CML operations.
-- **User-defined tags**: `CML.trace` accepts an optional `tag:` argument for grouping/filtering.
-- **Flexible output**: Trace output can be redirected to any IO (file, pipe, etc) via `CML::Tracer.set_output(io)`.
-- **Filtering**: Tracer can filter by tag, event type, or fiber using `set_filter_tags`, `set_filter_events`, and `set_filter_fibers`.
+* **Zero-overhead when disabled**: Tracing is compiled out unless `-Dtrace` is
+  passed.
+* **Event IDs**: Every event and pick has a unique ID for correlation.
+* **Fiber context**: Trace output includes the current fiber (or user-assigned
+  fiber name).
+* **Outcome tracing**: Commit/cancel outcomes are logged for all key CML
+  operations.
+* **User-defined tags**: `CML.trace` accepts an optional `tag:` argument for
+  grouping/filtering.
+* **Flexible output**: Trace output can be redirected to any IO (file, pipe,
+  etc) via `CML::Tracer.set_output(io)`.
+* **Filtering**: Tracer can filter by tag, event type, or fiber using
+  `set_filter_tags`, `set_filter_events`, and `set_filter_fibers`.
 
 **Example:**
 
@@ -19,6 +26,7 @@ CML::Tracer.set_filter_tags(["chan", "pick"])
 ```
 
 See `src/trace_macro.cr` for details.
+
 # Crystal Concurrent ML (CML)
 
 A minimal, composable, and correct **Concurrent ML runtime for Crystal** —
@@ -30,30 +38,33 @@ built from first principles using events, channels, and fibers.
 [![Crystal CI](https://img.shields.io/badge/Crystal-1.0+-brightgreen.svg)](https://crystal-lang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Compatibility Note:** For Crystal 1.19.0 and later, you must compile with `-Dpreview_mt -Dexecution_context` flags to enable thread-safe synchronization primitives.
+**Compatibility Note:** For Crystal 1.19.0 and later, you must compile with
+`-Dpreview_mt -Dexecution_context` flags to enable thread-safe synchronization
+primitives.
 
 ---
-
-
 
 ## 1. Overview
 
 This library provides a small but complete CML implementation in pure Crystal.
-It adds a higher-level event layer on top of Crystal's built-in channels and fibers.
+It adds a higher-level event layer on top of Crystal's built-in channels and
+fibers.
 
 **Core features:**
-- `Event(T)` abstraction for synchronization
-- Atomic commit cell (`Pick`) ensuring only one event in a choice succeeds
-- `Chan(T)` supporting synchronous rendezvous communication
-- Event combinators: `choose`, `wrap`, `guard`, `nack`, `timeout`
-- Fully deterministic, non-blocking registration semantics
-- Fiber-safe cancellation and cleanup
+
+*   `Event(T)` abstraction for synchronization
+*   Atomic commit cell (`Pick`) ensuring only one event in a choice succeeds
+*   `Chan(T)` supporting synchronous rendezvous communication
+*   Event combinators: `choose`, `wrap`, `guard`, `nack`, `timeout`
+*   Fully deterministic, non-blocking registration semantics
+*   Fiber-safe cancellation and cleanup
 
 **Design principles:**
-- **One pick, one commit**: Exactly one event in a choice succeeds
-- **Zero blocking in registration**: `try_register` never blocks
-- **Deterministic behavior**: Predictable regardless of scheduling
-- **Memory safe**: No recursion in structs, proper cleanup
+
+* **One pick, one commit**: Exactly one event in a choice succeeds
+* **Zero blocking in registration**: `try_register` never blocks
+* **Deterministic behavior**: Predictable regardless of scheduling
+* **Memory safe**: No recursion in structs, proper cleanup
 
 ---
 
@@ -68,6 +79,7 @@ dependencies:
 ```
 
 Then run:
+
 ```bash
 shards install
 ```
@@ -172,36 +184,45 @@ resp = CML.sync(CML.choose([
 ## 4. Core API
 
 ### Events
-- `CML.sync(evt)` - Synchronize on an event
-- `CML.always(value)` - Event that always succeeds
-- `CML.never` - Event that never succeeds
-- `CML.timeout(duration)` - Time-based event
-- `CML.after(span) { ... }` - Run a block after a delay (helper)
-- `CML.spawn_evt { ... }` - Run a block in a fiber, return result as event (helper)
+
+*   `CML.sync(evt)` - Synchronize on an event
+*   `CML.always(value)` - Event that always succeeds
+*   `CML.never` - Event that never succeeds
+*   `CML.timeout(duration)` - Time-based event
+*   `CML.after(span) { ... }` - Run a block after a delay (helper)
+*   `CML.spawn_evt { ... }` - Run a block in a fiber, return result as event
+  (helper)
 
 ### Combinators
-- `CML.choose(events)` - Race multiple events
-- `CML.wrap(evt, &block)` - Transform event result
-- `CML.guard(&block)` - Lazy event construction
-- `CML.nack(evt, &block)` - Cancellation cleanup
+
+*   `CML.choose(events)` - Race multiple events
+*   `CML.wrap(evt, &block)` - Transform event result
+*   `CML.guard(&block)` - Lazy event construction
+*   `CML.nack(evt, &block)` - Cancellation cleanup
 
 ### Channels
-- `CML::Chan(T).new` - Create a synchronous channel
-- `chan.send_evt(value)` - Send event
-- `chan.recv_evt` - Receive event
+
+*   `CML::Chan(T).new` - Create a synchronous channel
+*   `chan.send_evt(value)` - Send event
+*   `chan.recv_evt` - Receive event
 
 ### Optional helpers
-- `CML.after(span) { ... }`, `CML.spawn_evt { ... }`, `CML.sleep(span)`
-- IO helpers: `read_evt`, `read_line_evt`, `read_all_evt`, `write_evt`, `flush_evt`
-- Socket helpers: TCP `Socket.accept_evt`/`Socket.connect_evt`/`Socket.recv_evt`/`Socket.send_evt`, UDP `Socket::UDP.send_evt`/`Socket::UDP.recv_evt`
-- Channel-backed IO: `open_chan_in`, `open_chan_out`
-- Linda tuple-space example in `src/cml/linda/linda.cr`
+
+*   `CML.after(span) { ... }`, `CML.spawn_evt { ... }`, `CML.sleep(span)`
+*   IO helpers: `read_evt`, `read_line_evt`, `read_all_evt`, `write_evt`,
+  `flush_evt`
+*   Socket helpers: TCP
+  `Socket.accept_evt`/`Socket.connect_evt`/`Socket.recv_evt`/`Socket.send_evt`,
+  UDP `Socket::UDP.send_evt`/`Socket::UDP.recv_evt`
+*   Channel-backed IO: `open_chan_in`, `open_chan_out`
+*   Linda tuple-space example in `src/cml/linda/linda.cr`
 
 ---
 
 ## 5. Advanced Usage
 
 ### Nested Choices
+
 ```crystal
 inner = CML.choose([evt1, evt2])
 outer = CML.choose([inner, evt3])
@@ -209,6 +230,7 @@ result = CML.sync(outer)
 ```
 
 ### Multiple Concurrent Channels
+
 ```crystal
 ch1 = CML::Chan(Int32).new
 ch2 = CML::Chan(String).new
@@ -220,6 +242,7 @@ evt = CML.choose([
 ```
 
 ### Re-entrant Guards
+
 ```crystal
 evt = CML.guard do
   if some_condition
@@ -234,11 +257,13 @@ end
 
 ## 6. Documentation
 
-- [**Overview & Architecture**](docs/overview.md) - Deep dive into event semantics
-- [**API Reference**](docs/api.md) - Complete API documentation
-- [**CML Manual (Crystal)**](docs/cml_manual.md) - Detailed reference mirroring the SML/NJ CML docs
-- [**Examples**](examples/) - Working code examples
-- [**Cookbook**](docs/cookbook.md) - Common idioms and patterns
+* [**Overview & Architecture**](docs/overview.md) - Deep dive into event
+  semantics
+* [**API Reference**](docs/api.md) - Complete API documentation
+* [**CML Manual (Crystal)**](docs/cml_manual.md) - Detailed reference mirroring
+  the SML/NJ CML docs
+* [**Examples**](examples/) - Working code examples
+* [**Cookbook**](docs/cookbook.md) - Common idioms and patterns
 
 ---
 
@@ -252,7 +277,8 @@ crystal spec
 
 ## 8. Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and [AGENTS.md](AGENTS.md) for AI agent contribution rules.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and
+[AGENTS.md](AGENTS.md) for AI agent contribution rules.
 
 ---
 
@@ -264,4 +290,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ## 11. Debugging Guide
 
-See [docs/debugging_guide.md](docs/debugging_guide.md) for practical tips on using tracing, tags, and filtering to debug slow, stuck, or incorrect code in CML.
+See [docs/debugging_guide.md](docs/debugging_guide.md) for practical tips on
+using tracing, tags, and filtering to debug slow, stuck, or incorrect code in
+CML.
