@@ -1,46 +1,18 @@
-## 10. Tracing & Instrumentation
-
-CML includes a macro-based tracing system for debugging and performance
-analysis:
-
-* **Zero-overhead when disabled**: Tracing is compiled out unless `-Dtrace` is
-  passed.
-* **Event IDs**: Every event and pick has a unique ID for correlation.
-* **Fiber context**: Trace output includes the current fiber (or user-assigned
-  fiber name).
-* **Outcome tracing**: Commit/cancel outcomes are logged for all key CML
-  operations.
-* **User-defined tags**: `CML.trace` accepts an optional `tag:` argument for
-  grouping/filtering.
-* **Flexible output**: Trace output can be redirected to any IO (file, pipe,
-  etc) via `CML::Tracer.set_output(io)`.
-* **Filtering**: Tracer can filter by tag, event type, or fiber using
-  `set_filter_tags`, `set_filter_events`, and `set_filter_fibers`.
-
-**Example:**
-
-```crystal
-CML.trace "Chan.register_send", value, pick, tag: "chan"
-CML::Tracer.set_output(File.open("trace.log", "w"))
-CML::Tracer.set_filter_tags(["chan", "pick"])
-```
-
-See `src/trace_macro.cr` for details.
-
 # Crystal Concurrent ML (CML)
 
-A minimal, composable, and correct **Concurrent ML runtime for Crystal** —
+A minimal, composable, and correct **Concurrent ML runtime for Crystal** -
 built from first principles using events, channels, and fibers.
 
-> 💡 *Concurrent ML (CML)* is a message-passing concurrency model introduced by John Reppy.
-> It extends synchronous channels with **first-class events** that can be composed, chosen, or canceled safely.
+> Concurrent ML (CML) is a message-passing concurrency model introduced by John
+> Reppy. It extends synchronous channels with **first-class events** that can be
+> composed, chosen, or canceled safely.
 
 [![Crystal CI](https://img.shields.io/badge/Crystal-1.0+-brightgreen.svg)](https://crystal-lang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Compatibility Note:** For Crystal 1.19.0 and later, you must compile with
-`-Dpreview_mt -Dexecution_context` flags to enable thread-safe synchronization
-primitives.
+**Compatibility Note:** CML works without compile flags in default fiber mode.
+Pass `-Dpreview_mt -Dexecution_context` only when you want multithreaded
+execution contexts and thread-safe `Sync` primitives.
 
 ---
 
@@ -68,7 +40,44 @@ fibers.
 
 ---
 
-## 2. Installation
+## 2. Recent Stability Updates
+
+Recent runtime fixes focused on kill-safe parity, timeout reliability, and
+lock contention reduction:
+
+*   `TransactionId` cleanup/cancel paths are race-safe and cleanup callbacks run
+  at most once.
+*   `cancel_transactions_for` removes transactions under lock and performs cancel
+  outside lock.
+*   `TimeoutEvent` uses per-transaction timer ids and `TimerWheel` scheduling, so
+  cancellation cannot leak across concurrent waiters.
+*   `TimerWheel` runs callbacks outside its internal mutex to avoid
+  callback-under-lock deadlocks and reduce contention.
+*   `CVar#set!` resumes only active waiters, preventing stale committed/cancelled
+  transactions from being resumed.
+*   Blocking specs were hardened with explicit event timeouts to fail fast instead
+  of hanging indefinitely.
+*   Distributed tuple transport now uses CML socket events
+  (`CML::Socket.send_evt`/ `recv_evt`) instead of direct `TCPSocket`
+  reads/writes.
+*   A repository policy spec (`spec/io_safety_policy_spec.cr`) enforces that
+  distributed tuple transport does not regress to direct socket IO calls.
+
+## 2.1 Parallel IO Safety Policy
+
+Crystal `IO` objects are not generally safe for concurrent access from multiple
+threads. In this codebase:
+
+* Concurrent runtime IO paths must use CML event wrappers (`CML::Socket.*`,
+  `CML::PrimitiveIO.*`) instead of direct `IO`/`TCPSocket` calls.
+*   Transport layers should treat each socket as owned by transport fibers and
+  communicate via channels/mailboxes.
+*   If you add/modify distributed tuple transport, keep
+  `spec/io_safety_policy_spec.cr` passing.
+
+---
+
+## 3. Installation
 
 Add this to your `shard.yml`:
 
@@ -86,7 +95,7 @@ shards install
 
 ---
 
-## 3. Quickstart
+## 4. Quickstart
 
 ### After/Timeout Helper
 
@@ -181,7 +190,7 @@ resp = CML.sync(CML.choose([
 
 ---
 
-## 4. Core API
+## 5. Core API
 
 ### Events
 
@@ -215,11 +224,14 @@ resp = CML.sync(CML.choose([
   `Socket.accept_evt`/`Socket.connect_evt`/`Socket.recv_evt`/`Socket.send_evt`,
   UDP `Socket::UDP.send_evt`/`Socket::UDP.recv_evt`
 *   Channel-backed IO: `open_chan_in`, `open_chan_out`
-*   Linda tuple-space example in `src/cml/linda/linda.cr`
+*   Linda tuple-space implementation in `src/cml/tuple.cr` (`CML::TupleLib`)
+    with distributed `join_tuple_space(local_port:, remote_hosts:)` support
+    using default port `7001`; `remote_hosts` accepts `host`, `host:port`, and
+    bracketed IPv6 forms such as `[::1]:7001`
 
 ---
 
-## 5. Advanced Usage
+## 6. Advanced Usage
 
 ### Nested Choices
 
@@ -255,11 +267,10 @@ end
 
 ---
 
-## 6. Documentation
+## 7. Documentation
 
 * [**Overview & Architecture**](docs/overview.md) - Deep dive into event
   semantics
-* [**API Reference**](docs/api.md) - Complete API documentation
 * [**CML Manual (Crystal)**](docs/cml_manual.md) - Detailed reference mirroring
   the SML/NJ CML docs
 * [**Examples**](examples/) - Working code examples
@@ -267,28 +278,60 @@ end
 
 ---
 
-## 7. Running Tests
+## 8. Running Tests
 
 ```bash
-crystal spec
+CRYSTAL_CACHE_DIR=$PWD/.crystal-cache crystal spec
+# Optional: enable multithreaded execution-context specs
+CRYSTAL_CACHE_DIR=$PWD/.crystal-cache crystal spec -Dpreview_mt -Dexecution_context
 ```
 
 ---
 
-## 8. Contributing
+## 9. Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and
 [AGENTS.md](AGENTS.md) for AI agent contribution rules.
 
 ---
 
-## 9. License
+## 10. License
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-## 11. Debugging Guide
+## 11. Tracing & Instrumentation
+
+CML includes a macro-based tracing system for debugging and performance
+analysis:
+
+* **Zero-overhead when disabled**: Tracing is compiled out unless `-Dtrace` is
+  passed.
+* **Event IDs**: Every event and pick has a unique ID for correlation.
+* **Fiber context**: Trace output includes the current fiber (or user-assigned
+  fiber name).
+* **Outcome tracing**: Commit/cancel outcomes are logged for key CML operations.
+* **User-defined tags**: `CML.trace` accepts an optional `tag:` argument for
+  grouping/filtering.
+* **Flexible output**: Trace output can be redirected to any IO (file, pipe,
+  etc) via `CML::Tracer.set_output(io)`.
+* **Filtering**: Tracer can filter by tag, event type, or fiber using
+  `set_filter_tags`, `set_filter_events`, and `set_filter_fibers`.
+
+Example:
+
+```crystal
+CML.trace "Chan.register_send", value, pick, tag: "chan"
+CML::Tracer.set_output(File.open("trace.log", "w"))
+CML::Tracer.set_filter_tags(["chan", "pick"])
+```
+
+See `src/trace_macro.cr` for details.
+
+---
+
+## 12. Debugging Guide
 
 See [docs/debugging_guide.md](docs/debugging_guide.md) for practical tips on
 using tracing, tags, and filtering to debug slow, stuck, or incorrect code in

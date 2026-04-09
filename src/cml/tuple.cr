@@ -6,10 +6,12 @@ module CML
   # - TupleStore with hold/cancel/accept semantics
   # - Local tuple server + local proxy
   # - Output server and client-facing tuple-space operations
-  #
-  # Network fan-out hooks are kept in the API, but this file currently
-  # implements the local tuple-space path.
+  # - Distributed request/reply proxies with join-time request-log replay
   module TupleLib
+    private lib CSocket
+      fun dup(fd : Int32) : Int32
+    end
+
     struct ValAtom
       enum Kind
         Int
@@ -181,9 +183,9 @@ module CML
         when PatAtom::Kind::IntFormal
           io << "x;"
         when PatAtom::Kind::StringFormal
-          io << "y;"
-        when PatAtom::Kind::BoolFormal
           io << "z;"
+        when PatAtom::Kind::BoolFormal
+          io << "y;"
         when PatAtom::Kind::Wild
           io << "w;"
         end
@@ -233,9 +235,9 @@ module CML
         when 'x'
           {PatAtom.int_formal, i + 2}
         when 'y'
-          {PatAtom.string_formal, i + 2}
-        when 'z'
           {PatAtom.bool_formal, i + 2}
+        when 'z'
+          {PatAtom.string_formal, i + 2}
         when 'w'
           {PatAtom.wild, i + 2}
         else
@@ -315,6 +317,8 @@ module CML
                        {Kind::Cancel, encode_id_only(msg.trans_id)}
                      when InReply
                        {Kind::InReply, encode_with_id(msg.trans_id, DataRep.encode_values(msg.vals))}
+                     else
+                       raise "unsupported message variant"
                      end
 
         io = IO::Memory.new
@@ -346,6 +350,8 @@ module CML
         when Kind::InReply
           id, payload = decode_id_and_payload(body)
           InReply.new(id, DataRep.decode_values(payload))
+        else
+          raise "invalid message kind"
         end
       end
 
@@ -542,8 +548,12 @@ module CML
           if idx = bucket.holds.index { |(hold_id, _)| hold_id == id }
             bucket.holds.delete_at(idx)
           end
-          cleanup_bucket(bucket)
+        else
+          if idx = bucket.waiting.index { |w| w.id == id }
+            bucket.waiting.delete_at(idx)
+          end
         end
+        cleanup_bucket(bucket)
       end
 
       private def cleanup_bucket(bucket : Bucket)
@@ -551,7 +561,6 @@ module CML
       end
 
       private def match(template : Template, tuple : TupleValue) : Array(ValAtom)?
-        return unless template.tag == tuple.tag
         return unless template.fields.size == tuple.fields.size
 
         bindings = [] of ValAtom
@@ -626,29 +635,46 @@ module CML
       end
 
       private struct Add
+        getter id : Int32
         getter target : Proc(TupleValue, Nil)
 
-        def initialize(@target : Proc(TupleValue, Nil))
+        def initialize(@id : Int32, @target : Proc(TupleValue, Nil))
         end
       end
 
-      private alias Msg = Out | Add
+      private struct Remove
+        getter id : Int32
+
+        def initialize(@id : Int32)
+        end
+      end
+
+      private alias Msg = Out | Add | Remove
 
       @mb : CML::Mailbox(Msg)
       @mb = CML::Mailbox(Msg).new
 
       def initialize(local_target : Proc(TupleValue, Nil))
         CML.spawn do
-          targets = [local_target]
+          targets = [{0_i32, local_target}] of {Int32, Proc(TupleValue, Nil)}
           idx = 0
           loop do
             case msg = @mb.recv
             when Out
-              target = targets[idx % targets.size]
+              next if targets.empty?
+              _, target = targets[idx % targets.size]
               target.call(msg.tuple)
-              idx += 1
+              idx = (idx + 1) % targets.size
             when Add
-              targets << msg.target
+              if existing_idx = targets.index { |(id, _)| id == msg.id }
+                targets[existing_idx] = {msg.id, msg.target}
+              else
+                targets << {msg.id, msg.target}
+              end
+              idx = 0 if idx >= targets.size
+            when Remove
+              targets.reject! { |(id, _)| id == msg.id }
+              idx = 0 if idx >= targets.size
             end
           end
         end
@@ -658,8 +684,45 @@ module CML
         @mb.send(Out.new(tuple))
       end
 
-      def add_target(target : Proc(TupleValue, Nil))
-        @mb.send(Add.new(target))
+      def add_target(id : Int32, target : Proc(TupleValue, Nil))
+        @mb.send(Add.new(id, target))
+      end
+
+      def remove_target(id : Int32)
+        @mb.send(Remove.new(id))
+      end
+    end
+
+    private class ServerConn
+      getter ts_id : TsId
+      @out_mb : CML::Mailbox(NetMessage::Message)
+      @reply_mb : CML::Mailbox(Reply)
+
+      def initialize(@ts_id : TsId, @out_mb : CML::Mailbox(NetMessage::Message), @reply_mb : CML::Mailbox(Reply))
+      end
+
+      def send_out_tuple(tuple : TupleValue)
+        @out_mb.send(NetMessage::OutTuple.new(tuple))
+      end
+
+      def send_in_req(trans_id : Int32, remove : Bool, pat : Template)
+        if remove
+          @out_mb.send(NetMessage::InReq.new(trans_id, pat))
+        else
+          @out_mb.send(NetMessage::RdReq.new(trans_id, pat))
+        end
+      end
+
+      def send_accept(trans_id : Int32)
+        @out_mb.send(NetMessage::Accept.new(trans_id))
+      end
+
+      def send_cancel(trans_id : Int32)
+        @out_mb.send(NetMessage::Cancel.new(trans_id))
+      end
+
+      def reply_evt : Event(Reply)
+        @reply_mb.recv_evt
       end
     end
 
@@ -672,14 +735,36 @@ module CML
       private def initialize(@request : Proc(ProxyMsg, Nil), @output : Proc(TupleValue, Nil))
       end
 
-      def self.join_tuple_space(local_port : Int32? = nil, remote_hosts : Array(String) = [] of String) : self
-        if local_port || !remote_hosts.empty?
-          raise "CML::TupleLib distributed networking is not yet implemented; use local tuple space (no args)."
+      private def self.parse_host(host_str : String) : {String, Int32}
+        if host_str.empty?
+          raise ArgumentError.new("bad hostname format")
+        elsif host_str.starts_with?('[')
+          close_idx = host_str.index(']')
+          raise ArgumentError.new("bad hostname format") unless close_idx
+
+          host = host_str.byte_slice(1, close_idx - 1)
+          suffix = host_str.byte_slice(close_idx + 1)
+          return {host, 7001} if suffix.empty?
+
+          unless suffix.starts_with?(':') && suffix.bytesize > 1
+            raise ArgumentError.new("bad hostname format")
+          end
+
+          {host, suffix.byte_slice(1).to_i}
+        elsif host_str.count(':') > 1
+          # Bare IPv6 literal without an explicit port.
+          {host_str, 7001}
+        elsif colon_idx = host_str.rindex(':')
+          host = host_str.byte_slice(0, colon_idx)
+          port = host_str.byte_slice(colon_idx + 1)
+          raise ArgumentError.new("bad hostname format") if host.empty? || port.empty?
+          {host, port.to_i}
+        else
+          {host_str, 7001}
         end
+      end
 
-        ts_mb = CML::Mailbox(ClientReq).new
-
-        # Local tuple server loop.
+      private def self.start_tuple_server(ts_mb : CML::Mailbox(ClientReq))
         CML.spawn do
           store = TupleStore.new
           loop do
@@ -702,66 +787,270 @@ module CML
             end
           end
         end
+      end
 
-        local_proxy_ch = CML.channel(ProxyMsg)
-        local_proxy_reply_mb = CML::Mailbox(Reply).new
+      private def self.spawn_buffers(ts_id : TsId, socket : TCPSocket, ts_mb : CML::Mailbox(ClientReq), on_disconnect : Proc(Nil)? = nil) : ServerConn
+        out_mb = CML::Mailbox(NetMessage::Message).new
+        reply_mb = CML::Mailbox(Reply).new
+        disconnected = CML::AtomicFlag.new
+        reader_socket = socket
+        writer_socket = begin
+          writer_fd = CSocket.dup(reader_socket.fd)
+          raise IO::Error.from_errno("dup failed") if writer_fd < 0
 
-        # Local proxy loop.
+          TCPSocket.from_handle(
+            writer_fd,
+            family: reader_socket.family,
+            type: reader_socket.type,
+            protocol: reader_socket.protocol
+          )
+        end
+
+        close_once = -> {
+          if disconnected.compare_and_set(false, true)
+            reader_socket.close rescue nil
+            writer_socket.close rescue nil
+            on_disconnect.try(&.call)
+          end
+        }
+
+        CML.spawn do
+          begin
+            loop do
+              msg = out_mb.recv
+              data = NetMessage.encode(msg)
+              frame = IO::Memory.new
+              frame.write_bytes(data.size.to_u32, IO::ByteFormat::BigEndian)
+              frame.write(data)
+
+              bytes = frame.to_slice
+              off = 0
+              while off < bytes.size
+                written = CML.sync(CML::Socket.send_evt(writer_socket, bytes[off...bytes.size]))
+                raise IO::Error.new("socket send returned non-positive byte count") if written <= 0
+                off += written
+              end
+            end
+          rescue
+            close_once.call
+          end
+        end
+
+        CML.spawn do
+          begin
+            read_exact = ->(bytes : Int32) do
+              out = Bytes.new(bytes)
+              off = 0
+              while off < bytes
+                chunk = CML.sync(CML::Socket.recv_evt(reader_socket, bytes - off))
+                raise IO::EOFError.new if chunk.empty?
+                out[off, chunk.size].copy_from(chunk)
+                off += chunk.size
+              end
+              out
+            end
+
+            loop do
+              header = read_exact.call(4)
+              size = IO::ByteFormat::BigEndian.decode(UInt32, header).to_i
+              data = read_exact.call(size)
+              msg = NetMessage.decode(data)
+
+              case msg
+              when NetMessage::OutTuple
+                ts_mb.send(ClientOut.new(msg.tuple))
+              when NetMessage::InReq
+                ts_mb.send(ClientInReq.new(ts_id, msg.trans_id, true, msg.pat, ->(reply : Reply) {
+                  out_mb.send(NetMessage::InReply.new(reply.trans_id, reply.vals))
+                }))
+              when NetMessage::RdReq
+                ts_mb.send(ClientInReq.new(ts_id, msg.trans_id, false, msg.pat, ->(reply : Reply) {
+                  out_mb.send(NetMessage::InReply.new(reply.trans_id, reply.vals))
+                }))
+              when NetMessage::Accept
+                ts_mb.send(ClientAccept.new(ts_id, msg.trans_id))
+              when NetMessage::Cancel
+                ts_mb.send(ClientCancel.new(ts_id, msg.trans_id))
+              when NetMessage::InReply
+                reply_mb.send(Reply.new(msg.trans_id, msg.vals))
+              end
+            end
+          rescue
+            close_once.call
+          end
+        end
+
+        ServerConn.new(ts_id, out_mb, reply_mb)
+      end
+
+      private def self.build_proxy(
+        ts_id : TsId,
+        req_mb : CML::Mailbox(ProxyMsg),
+        reply_evt_fn : Proc(Event(Reply)),
+        send_in_req : Proc(Int32, Bool, Template, Nil),
+        send_accept : Proc(Int32, Nil),
+        send_cancel : Proc(Int32, Nil),
+        init_in_reqs : Array(InMsg) = [] of InMsg,
+      ) : Proc(ProxyMsg, Nil)
         CML.spawn do
           by_tid = Hash(Int64, TransInfo).new
           by_trans_id = Hash(Int32, TransInfo).new
           next_trans = Atomic(Int32).new(0_i32)
 
-          send_in_req = ->(trans_id : Int32, remove : Bool, pat : Template) {
-            ts_mb.send(ClientInReq.new(0, trans_id, remove, pat, ->(reply : Reply) {
-              # Avoid proxy<->server rendezvous deadlock when a reply is produced
-              # while the proxy is still handling the originating request.
-              ::spawn do
-                local_proxy_reply_mb.send(reply)
+          handle_req = ->(msg : ProxyMsg) do
+            case msg
+            when InMsg
+              id = next_trans.add(1)
+              info = TransInfo.new(id, msg.remove, msg.repl_fn)
+              by_tid[msg.tid] = info
+              by_trans_id[id] = info
+              send_in_req.call(id, msg.remove, msg.pat)
+            when CancelMsg
+              if info = by_tid.delete(msg.tid)
+                by_trans_id.delete(info.id)
+                send_cancel.call(info.id)
               end
-            }))
-          }
-          send_accept = ->(trans_id : Int32) { ts_mb.send(ClientAccept.new(0, trans_id)) }
-          send_cancel = ->(trans_id : Int32) { ts_mb.send(ClientCancel.new(0, trans_id)) }
+            when AcceptMsg
+              if info = by_tid.delete(msg.tid)
+                by_trans_id.delete(info.id)
+                if msg.ts_id == ts_id && info.remove
+                  send_accept.call(info.id)
+                else
+                  send_cancel.call(info.id)
+                end
+              end
+            end
+          end
+
+          init_in_reqs.each { |msg| handle_req.call(msg) }
 
           loop do
             CML.select(
-              CML.wrap(local_proxy_ch.recv_evt) do |msg|
-                case msg
-                when InMsg
-                  id = next_trans.add(1)
-                  info = TransInfo.new(id, msg.remove, msg.repl_fn)
-                  by_tid[msg.tid] = info
-                  by_trans_id[id] = info
-                  send_in_req.call(id, msg.remove, msg.pat)
-                when CancelMsg
-                  if info = by_tid.delete(msg.tid)
-                    by_trans_id.delete(info.id)
-                    send_cancel.call(info.id)
-                  end
-                when AcceptMsg
-                  if info = by_tid.delete(msg.tid)
-                    by_trans_id.delete(info.id)
-                    if msg.ts_id == 0 && info.remove
-                      send_accept.call(info.id)
-                    else
-                      send_cancel.call(info.id)
-                    end
-                  end
-                end
+              CML.wrap(req_mb.recv_evt) do |msg|
+                handle_req.call(msg)
               end,
-              CML.wrap(local_proxy_reply_mb.recv_evt) do |reply|
+              CML.wrap(reply_evt_fn.call) do |reply|
                 if info = by_trans_id[reply.trans_id]?
-                  info.repl_fn.call(reply.vals, 0)
+                  info.repl_fn.call(reply.vals, ts_id)
                 end
               end
             )
           end
         end
 
+        ->(msg : ProxyMsg) { req_mb.send(msg) }
+      end
+
+      def self.join_tuple_space(local_port : Int32? = nil, remote_hosts : Array(String) = [] of String) : self
+        ts_mb = CML::Mailbox(ClientReq).new
+        start_tuple_server(ts_mb)
+
+        proxy_targets = Hash(Int32, Proc(ProxyMsg, Nil)).new
+        in_log = Hash(Int64, InMsg).new
+        state_mtx = CML::Sync::Mutex.new
+        # Keep 0 reserved for the always-present local target.
+        next_remote_target_id = Atomic(Int32).new(1_i32)
+
+        request = ->(msg : ProxyMsg) {
+          targets = state_mtx.synchronize do
+            case msg
+            when InMsg
+              in_log[msg.tid] = msg
+            when CancelMsg, AcceptMsg
+              in_log.delete(msg.tid)
+            end
+            proxy_targets.values.dup
+          end
+          targets.each { |target| target.call(msg) }
+        }
+
         output_server = OutputServer.new(->(tuple : TupleValue) { ts_mb.send(ClientOut.new(tuple)) })
 
-        request = ->(msg : ProxyMsg) { CML.sync(local_proxy_ch.send_evt(msg)) }
+        local_proxy_req_mb = CML::Mailbox(ProxyMsg).new
+        local_proxy_reply_mb = CML::Mailbox(Reply).new
+        local_proxy = build_proxy(
+          0,
+          local_proxy_req_mb,
+          -> : Event(Reply) { local_proxy_reply_mb.recv_evt },
+          ->(trans_id : Int32, remove : Bool, pat : Template) {
+            ts_mb.send(ClientInReq.new(0, trans_id, remove, pat, ->(reply : Reply) {
+              CML.spawn { local_proxy_reply_mb.send(reply) }
+            }))
+          },
+          ->(trans_id : Int32) { ts_mb.send(ClientAccept.new(0, trans_id)) },
+          ->(trans_id : Int32) { ts_mb.send(ClientCancel.new(0, trans_id)) }
+        )
+        state_mtx.synchronize { proxy_targets[0] = local_proxy }
+
+        add_remote_conn = ->(conn : ServerConn, target_id : Int32) {
+          remote_req_mb = CML::Mailbox(ProxyMsg).new
+          state_mtx.synchronize do
+            init_in_reqs = in_log.values
+            remote_proxy = build_proxy(
+              conn.ts_id,
+              remote_req_mb,
+              -> : Event(Reply) { conn.reply_evt },
+              ->(trans_id : Int32, remove : Bool, pat : Template) { conn.send_in_req(trans_id, remove, pat) },
+              ->(trans_id : Int32) { conn.send_accept(trans_id) },
+              ->(trans_id : Int32) { conn.send_cancel(trans_id) },
+              init_in_reqs
+            )
+            proxy_targets[target_id] = remote_proxy
+          end
+          output_server.add_target(target_id, ->(tuple : TupleValue) { conn.send_out_tuple(tuple) })
+        }
+
+        if local_port || !remote_hosts.empty?
+          listen_port = local_port || 7001
+          accepted_counter = Atomic(Int32).new(remote_hosts.size + 1)
+          server = TCPServer.new("0.0.0.0", listen_port)
+
+          CML.spawn do
+            loop do
+              begin
+                socket = server.accept
+                ts_id = accepted_counter.add(1)
+                target_id = next_remote_target_id.add(1)
+                conn = spawn_buffers(ts_id, socket, ts_mb, -> {
+                  state_mtx.synchronize { proxy_targets.delete(target_id) }
+                  output_server.remove_target(target_id)
+                })
+                add_remote_conn.call(conn, target_id)
+              rescue
+                # Keep server loop alive on transient accept/decode errors.
+              end
+            end
+          end
+
+          remote_hosts.each_with_index do |host_str, idx|
+            host, port = parse_host(host_str)
+            socket = nil
+            last_error : Exception? = nil
+
+            300.times do
+              begin
+                socket = TCPSocket.new(host, port)
+                break
+              rescue ex
+                last_error = ex
+                sleep 100.milliseconds
+              end
+            end
+
+            unless socket
+              message = last_error ? last_error.not_nil!.message : "timed out"
+              raise ::Socket::Error.new("failed to connect to remote tuple space #{host}:#{port}: #{message}")
+            end
+
+            target_id = next_remote_target_id.add(1)
+            conn = spawn_buffers((idx + 1).to_i32, socket, ts_mb, -> {
+              state_mtx.synchronize { proxy_targets.delete(target_id) }
+              output_server.remove_target(target_id)
+            })
+            add_remote_conn.call(conn, target_id)
+          end
+        end
+
         output = ->(tuple : TupleValue) { output_server.output(tuple) }
 
         new(request, output)
@@ -855,6 +1144,139 @@ module CML
       def self.wild : PatAtom
         PatAtom.wild
       end
+    end
+  end
+end
+
+module CML
+  # Chapter 9 Linda compatibility namespace backed by TupleLib.
+  module Linda
+    alias ValAtom = CML::TupleLib::ValAtom
+    alias PatAtom = CML::TupleLib::PatAtom
+
+    struct TupleRep(T)
+      getter tag : ValAtom
+      getter fields : Array(T)
+
+      def initialize(@tag : ValAtom, @fields : Array(T))
+      end
+
+      def to_tuple_lib : CML::TupleLib::TupleRep(T)
+        CML::TupleLib::TupleRep(T).new(@tag, @fields)
+      end
+    end
+
+    alias Tuple = TupleRep(ValAtom)
+    alias Template = TupleRep(PatAtom)
+
+    class TupleSpace
+      @inner : CML::TupleLib::TupleSpace
+
+      def initialize(local_port : Int32? = nil, remote_hosts : Array(String) = [] of String)
+        @inner = CML::TupleLib::TupleSpace.join_tuple_space(local_port: local_port, remote_hosts: remote_hosts)
+      end
+
+      def self.join_tuple_space(local_port : Int32? = nil, remote_hosts : Array(String) = [] of String) : self
+        new(local_port: local_port, remote_hosts: remote_hosts)
+      end
+
+      def out(tuple : Tuple)
+        @inner.out(tuple.to_tuple_lib)
+      end
+
+      def in_evt(template : Template) : Event(Array(ValAtom))
+        @inner.in_evt(template.to_tuple_lib)
+      end
+
+      def rd_evt(template : Template) : Event(Array(ValAtom))
+        @inner.rd_evt(template.to_tuple_lib)
+      end
+    end
+
+    module Helpers
+      def self.ival(value : Int32) : ValAtom
+        CML::TupleLib::Helpers.ival(value)
+      end
+
+      def self.sval(value : String) : ValAtom
+        CML::TupleLib::Helpers.sval(value)
+      end
+
+      def self.bval(value : Bool) : ValAtom
+        CML::TupleLib::Helpers.bval(value)
+      end
+
+      def self.ipat(value : Int32) : PatAtom
+        CML::TupleLib::Helpers.ipat(value)
+      end
+
+      def self.spat(value : String) : PatAtom
+        CML::TupleLib::Helpers.spat(value)
+      end
+
+      def self.bpat(value : Bool) : PatAtom
+        CML::TupleLib::Helpers.bpat(value)
+      end
+
+      def self.iform : PatAtom
+        CML::TupleLib::Helpers.iform
+      end
+
+      def self.sform : PatAtom
+        CML::TupleLib::Helpers.sform
+      end
+
+      def self.bform : PatAtom
+        CML::TupleLib::Helpers.bform
+      end
+
+      def self.wild : PatAtom
+        CML::TupleLib::Helpers.wild
+      end
+    end
+
+    def self.ival(value : Int32) : ValAtom
+      Helpers.ival(value)
+    end
+
+    def self.sval(value : String) : ValAtom
+      Helpers.sval(value)
+    end
+
+    def self.bval(value : Bool) : ValAtom
+      Helpers.bval(value)
+    end
+
+    def self.ipat(value : Int32) : PatAtom
+      Helpers.ipat(value)
+    end
+
+    def self.spat(value : String) : PatAtom
+      Helpers.spat(value)
+    end
+
+    def self.bpat(value : Bool) : PatAtom
+      Helpers.bpat(value)
+    end
+
+    def self.iform : PatAtom
+      Helpers.iform
+    end
+
+    def self.sform : PatAtom
+      Helpers.sform
+    end
+
+    def self.bform : PatAtom
+      Helpers.bform
+    end
+
+    def self.wild : PatAtom
+      Helpers.wild
+    end
+
+    def self.join_tuple_space(local_port : Int32? = nil, remote_hosts : Array(String) = [] of String) : TupleSpace
+      TupleSpace.join_tuple_space(local_port: local_port, remote_hosts: remote_hosts)
     end
   end
 end

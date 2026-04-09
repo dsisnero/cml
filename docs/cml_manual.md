@@ -74,6 +74,15 @@ API, naming, and semantics provided by our implementation.
       corresponding `_evt` variants
     *   Built atop `Mailbox`/channels; mirrors Chapter 9 examples from the book
       using `IVar`, `MVar`, and multicast patterns.
+    *   Implementation source of truth is `src/cml/tuple.cr` (`CML::TupleLib`);
+      `CML::Linda` is a compatibility surface over that implementation.
+    *   Distributed joins use
+      `join_tuple_space(local_port: Int32? = nil, remote_hosts: Array(String))`.
+      `remote_hosts` accepts `host`, `host:port`, and bracketed IPv6
+      addresses like `[::1]:7001`; omitted ports default to `7001`.
+    *   When distributed networking is enabled via `local_port` or
+      `remote_hosts`, the tuple-space listener binds all IPv4 interfaces
+      (`0.0.0.0`) rather than loopback-only.
 
 ## IO Events
 
@@ -143,10 +152,30 @@ API, naming, and semantics provided by our implementation.
   is non-blocking; only `sync` suspends.
 * **Cancellation**: `with_nack` and nack-aware IO/process/socket events honor
   cancellation requests to avoid spurious work.
+* **Kill-safe behavior**: cancelling a blocked thread/fiber cancels its active
+  transaction and prevents stale resumes after controllers/shutdown logic exits.
+* **Timeout delivery**: timeout events are timer-wheel driven and track
+  cancellation per waiting transaction id.
 * **Determinism**: Avoid arbitrary sleeps; prefer timeouts as events. Fiber
   scheduling is cooperative.
 * **No hidden blocking**: Event registration must not block. Only synchronizing
   (`sync`) should park a fiber.
+* **Parallel IO safety**: avoid direct concurrent `IO`/`TCPSocket` operations in
+  runtime transport paths; use `CML::Socket.*` or `CML::PrimitiveIO.*` event
+  APIs for readiness-aware, cancellation-aware IO.
+* **Tuple transport policy**: distributed Linda transport in
+  `src/cml/tuple.cr` must not use direct socket reads/writes; this is enforced
+  by `spec/io_safety_policy_spec.cr`.
+
+## Test Reliability Notes
+
+When writing specs for sockets/IO/context integration:
+
+*   Race potentially blocking operations against `CML.timeout(...)` using
+  `CML.select(...)` to fail fast.
+*   Prefer explicit timeout failures over indefinite hangs.
+*   In restricted environments, localhost bind/connect may be unavailable; guard
+  such tests accordingly.
 
 ## Examples
 

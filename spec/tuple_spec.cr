@@ -64,4 +64,28 @@ describe "CML::TupleLib" do
       CML.set_running(true)
     end
   end
+
+  it "uses chapter-9 formal atom wire tags for template encoding" do
+    template = CML::TupleLib::TupleRep(CML::TupleLib::PatAtom).new(
+      CML::TupleLib::Helpers.sval("wire"),
+      [CML::TupleLib::Helpers.bform, CML::TupleLib::Helpers.sform]
+    )
+    encoded = CML::TupleLib::DataRep.encode_template(template)
+    encoded.should contain("y;")
+    encoded.should contain("z;")
+  end
+
+  it "accepts bracketed IPv6 remote host syntax without parse errors" do
+    begin
+      CML::TupleLib::TupleSpace.join_tuple_space(
+        remote_hosts: ["[::1]:65000"]
+      )
+      fail "expected remote connection failure"
+    rescue ex : ArgumentError
+      fail "expected host parsing to accept bracketed IPv6: #{ex.message}"
+    rescue ex : ::Socket::Error
+      ex.message.should_not be_nil
+      ex.message.not_nil!.should contain("failed to connect to remote tuple space")
+    end
+  end
 end
