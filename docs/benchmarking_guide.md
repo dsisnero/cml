@@ -48,13 +48,13 @@ infrastructure has been established:
 
 ```bash
 # Run the simple benchmark suite
-crystal run benchmarks/simple_bench.cr
+CRYSTAL_CACHE_DIR=$PWD/.crystal-cache crystal run benchmarks/simple_bench.cr
 
 # Run comprehensive CML benchmarks
-crystal run benchmarks/cml_benchmarks.cr
+CRYSTAL_CACHE_DIR=$PWD/.crystal-cache crystal run benchmarks/cml_benchmarks.cr
 
 # Run performance benchmarks with detailed metrics
-crystal run benchmarks/performance_benchmarks.cr
+CRYSTAL_CACHE_DIR=$PWD/.crystal-cache crystal run benchmarks/performance_benchmarks.cr
 ```
 
 ### Using the Benchmark CLI
@@ -240,6 +240,8 @@ When optimizing based on benchmark results:
 * Focus on **hot paths** identified by profiling
 * Reduce **heap allocations** in performance-critical code
 * Use **atomic operations** and **Mutex** consistently
+*   Avoid executing timer or event callbacks while holding shared locks; queue
+  callbacks and run them after lock release
 * Verify **non-blocking invariants** after optimization
 * Test with **CRYSTAL_WORKERS > 1** for concurrency scaling
 
@@ -399,4 +401,5 @@ colordiff -u benchmarks/results/results-main-20251027.txt benchmarks/results/res
 
 ---
 
-*This guide is part of Phase 2 - Performance and Efficiency in the CML development plan.*
+*This guide is part of Phase 2 - Performance and Efficiency in the CML
+development plan.*

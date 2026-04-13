@@ -171,7 +171,7 @@ describe CML::PrimitiveIO do
     writer.try &.close
   end
 
-  {% if flag?(:execution_context) %}
+  {% if flag?(:preview_mt) && flag?(:execution_context) %}
     describe "execution context detection" do
       it "selects appropriate backend for context" do
         # Reset backend cache to force re-selection

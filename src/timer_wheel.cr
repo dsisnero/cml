@@ -42,6 +42,7 @@ module CML
       @wheel_masks = Array(UInt64).new
       @wheel_shifts = Array(Int32).new
       @pending_timers = Array(TimerEntry).new
+      @ready_callbacks = [] of Proc(Nil)
       @next_id = 0_u64
       @timer_locations = Hash(UInt64, TimerEntry).new
       @mutex = Sync::Mutex.new
@@ -75,9 +76,11 @@ module CML
 
     # Advances the timer wheel by the given duration.
     def advance(by time : Time::Span) : Nil
-      @mutex.synchronize do
+      callbacks = @mutex.synchronize do
         advance_internal(time)
+        drain_ready_callbacks_internal
       end
+      run_callbacks(callbacks)
     end
 
     # Stops the timer wheel and its background processing fiber.
@@ -96,10 +99,14 @@ module CML
 
     # Returns the optimal sleep duration until the next timer is due.
     def process_and_get_next_sleep_duration : Time::Span
-      @mutex.synchronize do
+      callbacks = [] of Proc(Nil)
+      sleep_duration = @mutex.synchronize do
         process_expired_internal
+        callbacks = drain_ready_callbacks_internal
         calculate_next_sleep_duration_internal
       end
+      run_callbacks(callbacks)
+      sleep_duration
     end
 
     def tick_duration : Time::Span
@@ -164,6 +171,7 @@ module CML
       @running = false
       @wheel_slots.each(&.clear)
       @pending_timers.clear
+      @ready_callbacks.clear
       @timer_locations.clear
     end
 
@@ -245,11 +253,7 @@ module CML
       expired.each do |entry|
         next if entry.cancelled?
 
-        if @sync_callbacks
-          entry.callback.call
-        else
-          spawn { entry.callback.call rescue nil }
-        end
+        @ready_callbacks << entry.callback
 
         if interval = entry.interval
           new_entry = TimerEntry.new(
@@ -339,13 +343,33 @@ module CML
 
     private def process_timers_loop
       while @running
+        callbacks = [] of Proc(Nil)
         sleep_duration = @mutex.synchronize do
           break unless @running
           process_expired_internal
+          callbacks = drain_ready_callbacks_internal
           calculate_next_sleep_duration_internal
         end
+        run_callbacks(callbacks)
         break unless sleep_duration
         sleep sleep_duration
+      end
+    end
+
+    private def drain_ready_callbacks_internal : Array(Proc(Nil))
+      callbacks = @ready_callbacks
+      @ready_callbacks = [] of Proc(Nil)
+      callbacks
+    end
+
+    private def run_callbacks(callbacks : Array(Proc(Nil))) : Nil
+      return if callbacks.empty?
+      if @sync_callbacks
+        callbacks.each(&.call)
+      else
+        callbacks.each do |callback|
+          spawn { callback.call rescue nil }
+        end
       end
     end
   end

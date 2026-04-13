@@ -751,6 +751,18 @@ describe CML do
       sleep 10.milliseconds
       tid.exited?.should be_true
     end
+
+    it "accepts same_thread keyword" do
+      executed = false
+      tid = CML.spawn(same_thread: true) do
+        executed = true
+      end
+
+      tid.should be_a(CML::Thread::Id)
+      sleep 10.milliseconds
+      executed.should be_true
+      tid.exited?.should be_true
+    end
   end
 
   describe "spawnc" do
@@ -762,6 +774,18 @@ describe CML do
 
       Fiber.yield
       result.should eq(84)
+    end
+
+    it "accepts same_thread keyword" do
+      result = 0
+      tid = CML.spawnc(21, same_thread: true) do |x|
+        result = x * 2
+      end
+
+      tid.should be_a(CML::Thread::Id)
+      sleep 10.milliseconds
+      result.should eq(42)
+      tid.exited?.should be_true
     end
   end
 

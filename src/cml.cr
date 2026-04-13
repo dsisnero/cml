@@ -72,12 +72,10 @@ module CML
 
   # Cancel all transactions for a fiber (called when fiber is killed)
   def self.cancel_transactions_for(fiber : Fiber)
-    @@fiber_registry_mtx.synchronize do
-      if tid = @@fiber_to_transaction[fiber]?
-        tid.try_cancel
-        @@fiber_to_transaction.delete(fiber)
-      end
+    tid = @@fiber_registry_mtx.synchronize do
+      @@fiber_to_transaction.delete(fiber)
     end
+    tid.try(&.try_cancel)
   end
 
   # Transaction ID for tracking blocked operations
@@ -86,6 +84,8 @@ module CML
     @state : Atomic(TransactionState)
     @fiber : Fiber?
     @cleanup : Proc(Nil)?
+    @cleanup_mtx : Sync::Mutex
+    @fiber_mtx : Sync::Mutex
 
     # Unique ID for tracing/debugging
     getter id : Int64
@@ -96,6 +96,8 @@ module CML
       @state = Atomic(TransactionState).new(TransactionState::Active)
       @fiber = nil
       @cleanup = nil
+      @cleanup_mtx = Sync::Mutex.new
+      @fiber_mtx = Sync::Mutex.new
       @id = @@id_counter.add(1)
     end
 
@@ -114,9 +116,12 @@ module CML
       _, success = @state.compare_and_set(TransactionState::Active, TransactionState::Cancelled)
       if success
         CML.trace "TransactionId.try_cancel success", id, tag: "transaction"
-        if cleanup = @cleanup
-          cleanup.call
+        cleanup = @cleanup_mtx.synchronize do
+          value = @cleanup
+          @cleanup = nil
+          value
         end
+        cleanup.try(&.call)
       else
         CML.trace "TransactionId.try_cancel already committed/cancelled", id, @state.get, tag: "transaction"
       end
@@ -124,12 +129,22 @@ module CML
     end
 
     # Set the cleanup action to run when this transaction is cancelled
-    def set_cleanup(@cleanup : Proc(Nil)?)
+    def set_cleanup(cleanup : Proc(Nil)?)
+      return unless cleanup
+      run_now = false
+      @cleanup_mtx.synchronize do
+        if cancelled?
+          run_now = true
+        else
+          @cleanup = cleanup
+        end
+      end
+      cleanup.call if run_now
     end
 
     # Set the fiber to resume when this transaction commits
     def set_fiber(fiber : Fiber)
-      @fiber = fiber
+      @fiber_mtx.synchronize { @fiber = fiber }
       CML.register_transaction(self, fiber)
     end
 
@@ -139,8 +154,14 @@ module CML
       CML.trace "TransactionId.try_commit_and_resume", id, @state.get, tag: "transaction"
       _, success = @state.compare_and_set(TransactionState::Active, TransactionState::Committed)
       if success
-        CML.trace "TransactionId.try_commit_and_resume success", id, @fiber, tag: "transaction"
-        if fiber = @fiber
+        CML.trace "TransactionId.try_commit_and_resume success", id, tag: "transaction"
+        @cleanup_mtx.synchronize { @cleanup = nil }
+        fiber = @fiber_mtx.synchronize do
+          f = @fiber
+          @fiber = nil
+          f
+        end
+        if fiber
           fiber.enqueue unless fiber.dead?
           CML.unregister_transaction(self, fiber)
         end
@@ -775,20 +796,13 @@ module CML
     end
 
     protected def force_impl : EventGroup(T)
-      # Force all child events and combine
-      # Note: We need to cast each result to EventGroup(T) because when events
-      # are of different concrete types (e.g., RecvEvent from different channels),
-      # the map would return EventGroup(T)+ (union type)
-      forced = @events.map { |e| e.force.as(EventGroup(T)) }
-
-      # Flatten nested groups
       result = Array(EventGroup(T)).new
-      forced.each do |g|
+      @events.each do |event|
+        # Cast to EventGroup(T) to collapse differing concrete child group types.
+        g = event.force.as(EventGroup(T))
         case g
         when BaseGroup(T)
-          if !g.empty?
-            result << g
-          end
+          result << g unless g.empty?
         when NestedGroup(T)
           result.concat(g.groups)
         else
@@ -840,9 +854,8 @@ module CML
   class TimeoutEvent < Event(Nil)
     @duration : Time::Span
     @ready = AtomicFlag.new
-    @cancel_flag = AtomicFlag.new
-    @started = false
     @start_mtx = Sync::Mutex.new
+    @timer_ids = {} of Int64 => UInt64
 
     def initialize(duration : Time::Span)
       @duration = duration
@@ -856,7 +869,7 @@ module CML
 
       Blocked(Nil).new do |tid, next_fn|
         start_once(tid)
-        tid.set_cleanup -> { cancel_timer }
+        tid.set_cleanup -> { cancel_timer(tid.id) }
         next_fn.call
       end
     end
@@ -867,38 +880,32 @@ module CML
 
     private def start_once(tid : TransactionId)
       CML.trace "TimeoutEvent.start_once", @duration, tid.id, tag: "timeout"
-      should_start = false
-
-      @start_mtx.synchronize do
-        unless @started
-          @started = true
-          @cancel_flag.set(false)
-          should_start = true
-        end
-      end
+      return if @ready.get
+      should_start = @start_mtx.synchronize { !@timer_ids.has_key?(tid.id) }
 
       return unless should_start
 
       CML.trace "TimeoutEvent.schedule", @duration, tag: "timeout"
-      ::spawn do
-        sleep @duration
+      timer_id = self.class.timer_wheel.schedule(@duration) do
         deliver(tid)
       end
+      @start_mtx.synchronize { @timer_ids[tid.id] = timer_id }
     end
 
-    private def cancel_timer
-      @start_mtx.synchronize do
-        @started = false
-      end
-      @cancel_flag.set(true)
+    private def cancel_timer(tid_id : Int64)
+      id = @start_mtx.synchronize { @timer_ids.delete(tid_id) }
+      self.class.timer_wheel.cancel(id) if id
     end
 
     private def deliver(tid : TransactionId)
-      CML.trace "TimeoutEvent.deliver", tid.id, @cancel_flag.get, tid.cancelled?, tag: "timeout"
-      return if @cancel_flag.get
-      return if tid.cancelled?
-      @ready.set(true)
-      tid.try_commit_and_resume
+      @start_mtx.synchronize { @timer_ids.delete(tid.id) }
+      CML.trace "TimeoutEvent.deliver", tid.id, tid.cancelled?, tag: "timeout"
+      return if @ready.get
+      @ready.set(true) if tid.try_commit_and_resume
+    end
+
+    def self.timer_wheel
+      @@timer_wheel ||= TimerWheel.new
     end
   end
 
@@ -988,7 +995,7 @@ module CML
     return sync_on_one(events.first) if events.size == 1
 
     # Try to find an enabled event
-    blocked = Array({Proc(EventStatus(T)), Blocked(T)}).new
+    blocked = Array(Blocked(T)).new
 
     events.each do |bevt|
       case status = bevt.call
@@ -996,7 +1003,7 @@ module CML
         CML.trace "sync_on_base_events found enabled", tag: "sync"
         return status.value
       when Blocked(T)
-        blocked << {bevt, status}
+        blocked << status
       end
     end
 
@@ -1007,7 +1014,7 @@ module CML
     tid.set_fiber(Fiber.current)
     CML.trace "sync_on_base_events tid created", tid.id, tag: "sync"
 
-    blocked.each do |_, status|
+    blocked.each do |status|
       status.block_fn.call(tid, -> { })
     end
 
@@ -1086,6 +1093,8 @@ module CML
 
     collect_events(group, events_with_flags, nack_sets, [] of AtomicFlag)
 
+    blocked = Array(Blocked(T)).new
+
     # Try polling first
     events_with_flags.each do |(bevt, flag)|
       case status = bevt.call
@@ -1093,6 +1102,8 @@ module CML
         flag.set(true)
         fire_nacks(nack_sets)
         return status.value
+      when Blocked(T)
+        blocked << status
       end
     end
 
@@ -1100,11 +1111,8 @@ module CML
     tid = TransactionId.new
     tid.set_fiber(Fiber.current)
 
-    events_with_flags.each do |(bevt, flag)|
-      case status = bevt.call
-      when Blocked(T)
-        status.block_fn.call(tid, -> { })
-      end
+    blocked.each do |status|
+      status.block_fn.call(tid, -> { })
     end
 
     Fiber.suspend
@@ -1467,14 +1475,14 @@ module CML
 
   # Spawn a new thread
   # SML: val spawn : (unit -> unit) -> thread_id
-  def self.spawn(&block : -> Nil) : Thread::Id
+  def self.spawn(*, same_thread : Bool = false, &block : -> Nil) : Thread::Id
     unless running?
       raise "CML is not running (call CML.run first)"
     end
     controlling_custodian = Thread.current_custodian
     # Create a slot to hold the ThreadId reference
     tid_slot = Slot(Thread::Id).new
-    fiber = ::spawn do
+    fiber = spawn_native(same_thread: same_thread) do
       Thread.set_fiber_custodian(Fiber.current, controlling_custodian)
       begin
         block.call
@@ -1494,13 +1502,13 @@ module CML
 
   # Spawn a new thread with an argument
   # SML: val spawnc : ('a -> unit) -> 'a -> thread_id
-  def self.spawnc(arg : A, &block : A -> Nil) : Thread::Id forall A
+  def self.spawnc(arg : A, *, same_thread : Bool = false, &block : A -> Nil) : Thread::Id forall A
     unless running?
       raise "CML is not running (call CML.run first)"
     end
     controlling_custodian = Thread.current_custodian
     tid_slot = Slot(Thread::Id).new
-    fiber = ::spawn do
+    fiber = spawn_native(same_thread: same_thread) do
       Thread.set_fiber_custodian(Fiber.current, controlling_custodian)
       begin
         block.call(arg)
@@ -1516,6 +1524,22 @@ module CML
     tid.add_controller(controlling_custodian)
     tid_slot.set(tid)
     tid
+  end
+
+  private def self.spawn_native(*, same_thread : Bool, &block : -> Nil) : Fiber
+    return ::spawn { block.call } unless same_thread
+
+    begin
+      ::spawn(same_thread: true) { block.call }
+    rescue ex : RuntimeError
+      msg = ex.message
+      if msg && msg.includes?("doesn't support same_thread:true")
+        # Parallel execution context currently doesn't support same_thread pinning.
+        ::spawn { block.call }
+      else
+        raise ex
+      end
+    end
   end
 
   # Create a new sub-custodian under the current custodian
@@ -1639,8 +1663,6 @@ require "./cml/text_io"
 require "./cml/bin_io"
 require "./cml/process"
 require "./cml/simple_rpc"
-require "./cml/linda"
-require "./cml/distributed_linda"
 require "./cml/tuple"
 require "./cml/cvar"
 require "./cml/thread"

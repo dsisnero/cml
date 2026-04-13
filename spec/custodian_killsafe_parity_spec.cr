@@ -37,6 +37,7 @@ describe "Custodian kill-safe parity" do
 
         stop.set(true)
         CML.kill(tid)
+        CML.select(tid.join_evt, CML.timeout(200.milliseconds))
       end
     ensure
       CML.set_running(true)
@@ -100,6 +101,8 @@ describe "Custodian kill-safe parity" do
         stop2.set(true)
         CML.kill(t1)
         CML.kill(t2)
+        CML.select(t1.join_evt, CML.timeout(200.milliseconds))
+        CML.select(t2.join_evt, CML.timeout(200.milliseconds))
       end
     ensure
       CML.set_running(true)

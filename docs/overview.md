@@ -56,7 +56,7 @@ exactly one event in a `choose` will succeed.
 
 * **`AlwaysEvt(T)`**: Immediately succeeds with a fixed value
 * **`NeverEvt(T)`**: Never succeeds (useful for testing)
-* **`TimeoutEvt`**: Succeeds after a time duration
+* **`TimeoutEvt`**: Succeeds after a time duration via `TimerWheel`
 
 ### Channel Events
 
@@ -176,6 +176,21 @@ This protocol ensures:
 2.  **Deterministic waiting**: `pick.wait` blocks until decision
 3.  **Proper cleanup**: `cancel.call` ensures no resource leaks
 
+## Timeout and Cancellation Internals
+
+`TimeoutEvt` registration is non-blocking and schedules a timer-wheel callback.
+Each waiting transaction gets its own timer id. This prevents cross-transaction
+cancel races when one timeout event instance is shared in composed choices.
+
+Recent cancellation safety rules:
+
+*   Transaction cleanup callbacks are installed and consumed under a dedicated
+  mutex so they run at most once.
+*   Runtime-wide fiber transaction lookup removes entries under lock, but performs
+  cancellation outside lock to reduce lock hold time.
+*   Timer callbacks are collected under lock and executed after lock release,
+  avoiding callback-under-lock deadlocks.
+
 ## Design Principles
 
 ### 1. One Pick, One Commit
@@ -195,6 +210,11 @@ called from any fiber.
 ### 4. Deterministic Behavior
 
 The system behaves predictably regardless of fiber scheduling order.
+
+### 5. Active Waiter Resume
+
+Synchronization primitives resume only active transaction ids. Cancelled or
+already committed waiters are ignored to avoid stale wakeups.
 
 ## Memory Safety
 

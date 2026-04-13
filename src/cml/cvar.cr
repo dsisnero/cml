@@ -45,7 +45,7 @@ module CML
       @mtx.synchronize do
         case s = @state
         when Unset
-          waiters = s.waiters.dup
+          waiters = s.waiters
           @state = Set.new
           CML.trace "CVar.set! waiters", waiters.size, tag: "cvar"
         when Set
@@ -56,7 +56,7 @@ module CML
 
       # Resume all waiters outside the lock (commit them)
       waiters.each do |tid|
-        next if tid.cancelled?
+        next unless tid.active?
         CML.trace "CVar.set! resuming", tid.id, tag: "cvar"
         tid.try_commit_and_resume
       end

@@ -1,6 +1,25 @@
-{% skip_file unless flag?(:execution_context) %}
+{% skip_file unless flag?(:preview_mt) && flag?(:execution_context) %}
 require "./spec_helper"
 require "fiber/execution_context"
+
+private def receive_with_timeout(ch : Channel(T), timeout = 10.seconds) : T forall T
+  select
+  when value = ch.receive
+    value
+  when timeout(timeout)
+    fail "timed out waiting on channel receive"
+    raise "unreachable"
+  end
+end
+
+private def wait_isolated_with_timeout(context : Fiber::ExecutionContext::Isolated, timeout = 2.seconds) : Nil
+  done = Channel(Nil).new
+  spawn do
+    context.wait
+    done.send(nil)
+  end
+  receive_with_timeout(done, timeout)
+end
 
 describe "CML EventLoop Compatibility" do
   it "works in Parallel context with multiple threads" do
@@ -16,14 +35,16 @@ describe "CML EventLoop Compatibility" do
         writer.close
       end
 
-      bytes = CML.sync(CML.read_evt(reader, 4))
+      bytes = CML.select(CML.read_evt(reader, 4), CML.timeout(2.seconds))
+      bytes.should_not be_nil
+      bytes = bytes.as(Bytes)
       String.new(bytes).should eq("test")
     ensure
       reader.try &.close
       writer.try &.close
       done.send(nil)
     end
-    done.receive
+    receive_with_timeout(done)
   end
 
   it "works in Isolated context" do
@@ -36,13 +57,15 @@ describe "CML EventLoop Compatibility" do
         writer.close
       end
 
-      bytes = CML.sync(CML.read_evt(reader, 4))
+      bytes = CML.select(CML.read_evt(reader, 4), CML.timeout(2.seconds))
+      bytes.should_not be_nil
+      bytes = bytes.as(Bytes)
       String.new(bytes).should eq("test")
     ensure
       reader.try &.close
       writer.try &.close
     end
-    context.wait
+    wait_isolated_with_timeout(context)
   end
 
   it "mixes CML and Crystal async operations" do
@@ -56,7 +79,9 @@ describe "CML EventLoop Compatibility" do
     end
 
     # Read using CML event
-    bytes = CML.sync(CML.read_evt(reader, 4))
+    bytes = CML.select(CML.read_evt(reader, 4), CML.timeout(2.seconds))
+    bytes.should_not be_nil
+    bytes = bytes.as(Bytes)
     String.new(bytes).should eq("test")
   ensure
     reader.try &.close
@@ -86,9 +111,9 @@ describe "CML EventLoop Compatibility" do
     end
 
     # Wait for both to complete
-    sender_done.receive
-    receiver_done.receive
-    receiver_context.wait
+    receive_with_timeout(sender_done)
+    receive_with_timeout(receiver_done)
+    wait_isolated_with_timeout(receiver_context)
   end
 
   describe "Interference testing" do

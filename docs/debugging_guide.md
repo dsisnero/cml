@@ -74,6 +74,16 @@ CML::Tracer.set_output(File.open("trace.log", "w"))
 *   Use tags and event filters to focus on the subsystem or operation of interest.
 *   Redirect output to a file for offline analysis.
 
+### 5. Diagnosing Hangs (preferred workflow)
+
+1.  Run specs with `--verbose` to identify the exact hanging example.
+2.  Add an explicit timeout race around the blocking event:
+    `CML.select(evt, CML.timeout(2.seconds))`.
+3.  Fail with a label (`"timed out waiting for accept"`) so the stuck operation
+    is obvious in CI output.
+4.  Enable tracing for timeout/transaction paths and inspect whether the
+    transaction ever commits or cancels.
+
 ## Real-World Trace Usage Examples
 
 ### Example 1: Debugging a Stuck Channel
@@ -111,6 +121,10 @@ CML.trace "MVar.put", value, tag: "mvar"
 CML::Tracer.set_filter_tags(["timer"])
 ```
 
+For timeout/cancellation debugging, useful trace points include:
+`TimeoutEvent.schedule`, `TimeoutEvent.deliver`, `TransactionId.try_cancel`,
+`TransactionId.try_commit_and_resume`.
+
 ### Example 4: Debugging Choice Outcomes
 
 To ensure only one event in a choice is committed:
@@ -130,6 +144,8 @@ related event IDs.
 *   Filter by tag or event to reduce noise and focus on the problem.
 *   Use fiber names to track specific concurrent operations.
 *   Always disable tracing in production for zero overhead.
+*   In specs, never leave indefinite blocking operations unbounded; always race
+    with an explicit timeout event.
 
 ## Reference
 

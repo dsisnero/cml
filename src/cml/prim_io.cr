@@ -8,7 +8,9 @@
 
 require "./sync"
 require "crystal/event_loop"
-require "fiber/execution_context"
+{% if flag?(:preview_mt) && flag?(:execution_context) %}
+  require "fiber/execution_context"
+{% end %}
 
 module CML
   module PrimitiveIO
@@ -864,12 +866,10 @@ module CML
 
     # Check if current execution context is Parallel (multi-threaded)
     private def self.in_parallel_context? : Bool
-      # Execution contexts require -Dpreview_mt -Dexecution_context flags
       {% if flag?(:preview_mt) && flag?(:execution_context) %}
         context = Fiber::ExecutionContext.current
         context.is_a?(Fiber::ExecutionContext::Parallel)
       {% else %}
-        # Without execution contexts, assume single-threaded (not parallel)
         false
       {% end %}
     end
