@@ -1,12 +1,25 @@
 ## A CML Implementation of Linda
 
+## Port status in this repository
+
+The canonical Crystal port for Chapter 9 lives in:
+
+*   `src/cml/tuple.cr` (`CML::TupleLib`)
+
+`CML::Linda` is a compatibility namespace that delegates to `CML::TupleLib`, so
+there is a single runtime implementation path for tuple-space behavior.
+
+The SML reproduction used for cross-checking chapter structure and ideas is:
+
+*   `examples/tuple/tuple.ml`
+
 A principal use of concurrent programming is in the implementation of
 distributed systems. A distributed system consists of processes running in
 different address spaces on logically different processors. Because the
 processes are physically disjoint, there are a number of issues that arise in
 distributed systems that are not present in concurrent programming:
 
-* ÷ Communication latency is signi fi cantly higher over a network than between
+*   ÷ Communication latency is signi fi cantly higher over a network than between
   threads running in the same address space.
 *   ÷ Processors and network links can go down, and come back up, during the
   execution of a distributed program.
@@ -278,7 +291,7 @@ tuple space:
 *   ÷ Read-all, write-one: where each tuple is located at a single processor. A
   write operation adds a tuple to some processor, while a read operation must
   query all the processors in the system for a match.
-* ÷ Read-one, write-all: where each processor has a copy of every tuple. A write
+*   ÷ Read-one, write-all: where each processor has a copy of every tuple. A write
   operation must add the tuple to all processors, while a read operation need
   only query the local processor's copy of tuple space. Note, however, that a
   successful input operation must communicate with all of the other processors
@@ -346,7 +359,7 @@ The basic protocol for inEvt is as follows:
    input request in a table of outstanding requests. If some subsequent output
    tuple matches the input request, then the tuple server will send the matching
    tuple to P.
-3. The processor P waits for a matching tuple. Once P receives a matching tuple,
+3.  The processor P waits for a matching tuple. Once P receives a matching tuple,
    say from Q, it sends Q a message acknowledging the tuple, and sends a
    cancellation message to the other processors.
 4.  When Q receives the acknowledgement, it removes the tuple from its space.
@@ -1936,4 +1949,3 @@ SML Basis Library [GR04]. This chapter also used additional functions from the
 SML/NJ Library, which are described in the accompanying documentation.
 
 13 Chris Stone, personal communication, March 1995.
-

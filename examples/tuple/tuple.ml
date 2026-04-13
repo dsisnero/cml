@@ -1,6 +1,8 @@
-(* CML Implementation of Linda - Chapter 9 of Cambridge Concurrent Programming in ML *)
-(* Organized into coherent modules following the book's architecture *)
-(* This is a conceptual implementation; many dependencies on SML/NJ and CML are assumed. *)
+(* CML-Linda implementation from Chapter 9 of Concurrent Programming in ML. *)
+(* The module layering follows the chapter architecture:
+   Tuple/DataRep/NetMessage/Network/TupleStore/TupleServer/OutputServer/Linda. *)
+(* This file is intended to be a faithful SML/NJ-style reproduction of the
+   chapter's code and protocol ideas, not a minimal sketch. *)
 
 (* Preamble: Assume necessary CML and library structures are available *)
 open CML
@@ -400,7 +402,7 @@ end (* NETWORK *)
 structure Network : NETWORK = struct
   type ts_id = int
   type reply = {transId : int, vals : Tuple.val_atom list}
-  datatype network = NETWORK of {shutdown: unit SyncVar.ivar}
+  datatype network = NETWORK of {shutdown: unit -> unit}
   datatype server_conn = CONN of {
         out : NetMessage.message -> unit,
         replyEvt : reply event
@@ -475,7 +477,8 @@ structure Network : NETWORK = struct
 
   fun spawnNetServer (myPort, startId, tsMb, addTS) = let
       val mySock = INetSock.TCP.socket()
-      fun loop nextId = let
+      val running = ref true
+      fun loop nextId = if !running then () else let
               val (newSock, addr) = Socket.accept mySock
               val proxyConn = spawnBuffers (nextId, newSock, tsMb)
               val (host, port) = INetSock.fromAddr addr
@@ -486,13 +489,16 @@ structure Network : NETWORK = struct
               in
                   addTS {name = name, id = nextId, conn = proxyConn};
                   loop (nextId+1)
-              end
+              end handle _ => if !running then () else loop nextId
       val port = getOpt(myPort, 7001)
+      fun doShutdown () = (
+            running := false;
+            (Socket.close mySock) handle _ => ())
       in
         Socket.bind (mySock, INetSock.any port);
         Socket.listen (mySock, 5);
         spawn (fn () => loop startId);
-        NETWORK{shutdown = SyncVar.iVar()}
+        NETWORK{shutdown = doShutdown}
       end
 
   fun initNetwork {port, remote, tsReqMb, addTS} = let
@@ -513,16 +519,20 @@ structure Network : NETWORK = struct
           }
         end
 
-  (* Stub implementations for send operations *)
-  fun sendOutTuple (CONN{out, ...}) tuple = out (NetMessage.OutTuple tuple)
+  (* Network send wrappers used by proxies/output server (Chapter 9 Listing 9.6). *)
+  fun sendOutTuple (CONN{out, ...}) tuple =
+        out (NetMessage.OutTuple tuple)
   fun sendInReq (CONN{out, ...}) {transId, remove, pat} =
-        out (if remove then NetMessage.InReq{transId=transId, pat=pat}
-                       else NetMessage.RdReq{transId=transId, pat=pat})
-  fun sendAccept (CONN{out, ...}) {transId} = out (NetMessage.Accept{transId=transId})
-  fun sendCancel (CONN{out, ...}) {transId} = out (NetMessage.Cancel{transId=transId})
+        out (if remove
+              then NetMessage.InReq{transId=transId, pat=pat}
+              else NetMessage.RdReq{transId=transId, pat=pat})
+  fun sendAccept (CONN{out, ...}) {transId} =
+        out (NetMessage.Accept{transId=transId})
+  fun sendCancel (CONN{out, ...}) {transId} =
+        out (NetMessage.Cancel{transId=transId})
   fun replyEvt (CONN{replyEvt, ...}) = replyEvt
 
-  fun shutdown (NETWORK{shutdown}) = SyncVar.iGet shutdown  (* placeholder *)
+  fun shutdown (NETWORK{shutdown}) = shutdown()
 end
 
 (* =========================================================================== *)
@@ -791,6 +801,7 @@ structure TupleServer : TUPLE_SERVER = struct
 
   fun proxyServer (myId, conn : conn_ops, reqEvt, initInReqs) = let
       val tbl = TransTbl.mkTable (32, Fail "TransTbl")
+      val {sendInReq, sendAccept, sendCancel, replyEvt} = conn
       val nextId = let val cnt = ref 0
             in
               fn () => let val id = !cnt in cnt := id+1; id end
@@ -800,19 +811,19 @@ structure TupleServer : TUPLE_SERVER = struct
             val req = {transId = id, remove = remove, pat = pat}
             in
               TransTbl.insert tbl (tid, id, {id=id, replFn=replFn});
-              #sendInReq conn req
+              sendInReq req
             end
         | handleMsg (CANCEL tid) = let
             val {id, ...} = TransTbl.remove1 tbl tid
             in
-              #sendCancel conn {transId=id}
+              sendCancel {transId=id}
             end
         | handleMsg (ACCEPT(tid, tsId)) = let
             val {id, ...} = TransTbl.remove1 tbl tid
             in
               if (tsId = myId)
-                then #sendAccept conn {transId=id}
-                else #sendCancel conn {transId=id}
+                then sendAccept {transId=id}
+                else sendCancel {transId=id}
             end
       fun handleReply {transId, vals} = (
           case TransTbl.find2 tbl transId
@@ -822,7 +833,7 @@ structure TupleServer : TUPLE_SERVER = struct
       fun loop () = (
           select [
               wrap (reqEvt, handleMsg),
-              wrap (#replyEvt conn, handleReply)
+              wrap (replyEvt, handleReply)
             ];
           loop ())
     in

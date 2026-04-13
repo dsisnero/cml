@@ -1,0 +1,48 @@
+name: Tuple Distributed Stress
+
+on:
+  workflow_dispatch:
+    inputs:
+      loops:
+        description: "How many distributed iterations to run"
+        required: false
+        default: "20"
+      rounds:
+        description: "Dining rounds per node"
+        required: false
+        default: "2"
+      base_port:
+        description: "Starting localhost port (uses +10 per iteration)"
+        required: false
+        default: "9000"
+  schedule:
+    - cron: "17 6 * * *"
+
+jobs:
+  distributed-stress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      CRYSTAL_CACHE_DIR: ${{ github.workspace }}/.crystal-cache
+      CML_DISTRIBUTED_STRESS_LOOPS: ${{ inputs.loops || '20' }}
+      CML_DISTRIBUTED_STRESS_ROUNDS: ${{ inputs.rounds || '2' }}
+      CML_DISTRIBUTED_STRESS_BASE_PORT: ${{ inputs.base_port || '9000' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Crystal
+        uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: latest
+
+      - name: Show stress configuration
+        run: |
+          echo "CML_DISTRIBUTED_STRESS_LOOPS=${CML_DISTRIBUTED_STRESS_LOOPS}"
+          echo "CML_DISTRIBUTED_STRESS_ROUNDS=${CML_DISTRIBUTED_STRESS_ROUNDS}"
+          echo "CML_DISTRIBUTED_STRESS_BASE_PORT=${CML_DISTRIBUTED_STRESS_BASE_PORT}"
+
+      - name: Run tuple distributed stress spec
+        run: |
+          mkdir -p "${CRYSTAL_CACHE_DIR}"
+          crystal spec -Dpreview_mt -Dexecution_context spec/tuple_distributed_stress_spec.cr --error-trace

@@ -1,6 +1,13 @@
 require "./spec_helper"
 
 describe "CML::Linda tuple space" do
+  it "exposes helper constructors directly on Linda module" do
+    atom = CML::Linda.sval("x")
+    pat = CML::Linda.sform
+    atom.value.should eq("x")
+    pat.kind.string_formal?.should be_true
+  end
+
   it "supports out and in_evt" do
     space = CML::Linda::TupleSpace.new
     tuple = CML::Linda::TupleRep(CML::Linda::ValAtom).new(CML::Linda::Helpers.ival(1), [CML::Linda::Helpers.sval("x")])
