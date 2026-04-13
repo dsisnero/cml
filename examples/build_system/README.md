@@ -61,15 +61,15 @@ targets can be built concurrently using separate fibers.
 
 1.  Set up demo source files:
 
-   ```bash
-   bash setup_demo.sh
-   ```
+    ```bash
+    bash setup_demo.sh
+    ```
 
 2.  Run the build system:
 
-   ```bash
-   crystal run build_system.cr -- example.makefile
-   ```
+    ```bash
+    crystal run build_system.cr -- example.makefile
+    ```
 
 ## Makefile Format
 

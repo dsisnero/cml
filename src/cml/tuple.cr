@@ -961,7 +961,7 @@ module CML
             end
             proxy_targets.values.dup
           end
-          targets.each { |target| target.call(msg) }
+          targets.each(&.call(msg))
         }
 
         output_server = OutputServer.new(->(tuple : TupleValue) { ts_mb.send(ClientOut.new(tuple)) })

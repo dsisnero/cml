@@ -119,12 +119,12 @@ describe "CML socket wrapper factory" do
       end
 
       pair = select
-             when result = pair_ch.receive
-               result
-             when timeout(5.seconds)
-               fail "timed out creating socket pair with specified protocol"
-               raise "unreachable"
-             end
+      when result = pair_ch.receive
+        result
+      when timeout(5.seconds)
+        fail "timed out creating socket pair with specified protocol"
+        raise "unreachable"
+      end
 
       case pair
       when Tuple(CML::Socket::SocketWrapper, CML::Socket::SocketWrapper)

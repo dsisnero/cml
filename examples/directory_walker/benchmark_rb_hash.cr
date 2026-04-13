@@ -77,11 +77,11 @@ cml_hash = run_case("cml", only) do
 end
 
 output = {
-  "root" => root,
-  "serial" => serial_hash,
-  "channel_fibers" => fiber_hash,
+  "root"            => root,
+  "serial"          => serial_hash,
+  "channel_fibers"  => fiber_hash,
   "channel_threads" => thread_hash,
-  "cml" => cml_hash,
+  "cml"             => cml_hash,
 }
 
 filename = if only
