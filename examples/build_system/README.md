@@ -7,16 +7,16 @@ based on Chapter 7 of "Concurrent Programming in ML" by John H. Reppy.
 
 The build system translates a makefile into a **dataflow network** where:
 
-- **Nodes** represent objects (files) to be built
-- **Edges** represent dependencies (using multicast channels)
-- **Messages** carry timestamps or errors between nodes
+* **Nodes** represent objects (files) to be built
+* **Edges** represent dependencies (using multicast channels)
+* **Messages** carry timestamps or errors between nodes
 
 The system exploits natural parallelism in the dependency graph - independent
 targets can be built concurrently using separate fibers.
 
 ## Architecture
 
-```
+```text
                     ┌──────────────┐
                     │  Controller  │
                     └──────┬───────┘
@@ -45,29 +45,31 @@ targets can be built concurrently using separate fibers.
 
 ## Key CML Concepts Demonstrated
 
-1. **Multicast Channels**: Used to broadcast timestamps from objects to their
+1.  **Multicast Channels**: Used to broadcast timestamps from objects to their
    successors. This avoids artificial ordering and potential deadlock.
 
-2. **Concurrent Fibers**: Each node in the dependency graph is a separate fiber
+2.  **Concurrent Fibers**: Each node in the dependency graph is a separate fiber
    that independently waits for its antecedents and executes its action.
 
-3. **Event Synchronization**: The controller uses CML events to coordinate the
+3.  **Event Synchronization**: The controller uses CML events to coordinate the
    build process - signaling leaves to start and waiting for the root result.
 
-4. **Dataflow Pattern**: Information flows through the network following the
+4.  **Dataflow Pattern**: Information flows through the network following the
    natural dependency order.
 
 ## Running the Example
 
-1. Set up demo source files:
-   ```bash
-   bash setup_demo.sh
-   ```
+1.  Set up demo source files:
 
-2. Run the build system:
-   ```bash
-   crystal run build_system.cr -- example.makefile
-   ```
+    ```bash
+    bash setup_demo.sh
+    ```
+
+2.  Run the build system:
+
+    ```bash
+    crystal run build_system.cr -- example.makefile
+    ```
 
 ## Makefile Format
 
@@ -79,20 +81,21 @@ target : dependency1 dependency2 ...
 ```
 
 Rules:
-- Dependency line: `target : deps...`
-- Action line: Must be indented with tab or spaces
-- Comments: Lines starting with `#`
-- First rule defines the root target
+
+*   Dependency line: `target : deps...`
+*   Action line: Must be indented with tab or spaces
+*   Comments: Lines starting with `#`
+*   First rule defines the root target
 
 ## Code Structure
 
-- `Stamp`: Either a `Time` timestamp or `:error`
-- `Rule`: Target, antecedents, and action
-- `make_node`: Creates a fiber for internal nodes
-- `make_leaf`: Creates a fiber for leaf nodes
-- `make_graph`: Builds the dataflow network
-- `parse_makefile`: Parses the makefile
-- `make`: Main entry point, returns a build function
+*   `Stamp`: Either a `Time` timestamp or `:error`
+*   `Rule`: Target, antecedents, and action
+*   `make_node`: Creates a fiber for internal nodes
+*   `make_leaf`: Creates a fiber for leaf nodes
+*   `make_graph`: Builds the dataflow network
+*   `parse_makefile`: Parses the makefile
+*   `make`: Main entry point, returns a build function
 
 ## Comparison to SML/CML
 
@@ -108,7 +111,8 @@ Rules:
 ## Extensions
 
 Possible extensions mentioned in the book:
-- Multiple root targets
-- Demand-driven rebuilding (pull instead of push)
-- Tools that produce multiple outputs
-- Event-driven automatic rebuilding when files change
+
+*   Multiple root targets
+*   Demand-driven rebuilding (pull instead of push)
+*   Tools that produce multiple outputs
+*   Event-driven automatic rebuilding when files change

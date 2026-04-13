@@ -39,21 +39,25 @@ module CML
 
     # Set the cvar, waking all waiters
     def set!
+      CML.trace "CVar.set! start", tag: "cvar"
       waiters = [] of TransactionId
 
       @mtx.synchronize do
         case s = @state
         when Unset
-          waiters = s.waiters.dup
+          waiters = s.waiters
           @state = Set.new
+          CML.trace "CVar.set! waiters", waiters.size, tag: "cvar"
         when Set
+          CML.trace "CVar.set! already set", tag: "cvar"
           # Already set, ignore
         end
       end
 
       # Resume all waiters outside the lock (commit them)
       waiters.each do |tid|
-        next if tid.cancelled?
+        next unless tid.active?
+        CML.trace "CVar.set! resuming", tid.id, tag: "cvar"
         tid.try_commit_and_resume
       end
     end

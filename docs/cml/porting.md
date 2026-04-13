@@ -1,10 +1,14 @@
 # Porting old programs
 
-This document is adapted from the SML/NJ CML documentation (`porting.mldoc`) for the Crystal CML implementation. It describes changes from older versions of CML and provides guidance for porting SML/NJ CML programs to Crystal.
+This document is adapted from the SML/NJ CML documentation (`porting.mldoc`) for
+the Crystal CML implementation. It describes changes from older versions of CML
+and provides guidance for porting SML/NJ CML programs to Crystal.
 
 ## Overview
 
-The Crystal CML implementation is a fresh implementation inspired by SML/NJ CML, not a direct port. As such, many API differences exist beyond simple name changes. This guide covers:
+The Crystal CML implementation is a fresh implementation inspired by SML/NJ CML,
+not a direct port. As such, many API differences exist beyond simple name
+changes. This guide covers:
 
 1.  **SML/NJ CML 0.9.8 to 1.0+ changes** (from original documentation)
 2.  **SML/NJ CML to Crystal CML mapping** (additional guidance)
@@ -12,15 +16,20 @@ The Crystal CML implementation is a fresh implementation inspired by SML/NJ CML,
 
 ## Namespace Differences
 
-In Crystal, all CML functionality is in the `CML` module (or submodules like `CML::Thread`, `CML::IOEvents`, etc.). This differs from SML/NJ where structures like `CML`, `SyncVar`, `Mailbox`, etc. are separate.
+In Crystal, all CML functionality is in the `CML` module (or submodules like
+`CML::Thread`, `CML::IOEvents`, etc.). This differs from SML/NJ where structures
+like `CML`, `SyncVar`, `Mailbox`, etc. are separate.
 
 ## Backwards compatibility modules
 
-SML/NJ CML provided two backwards compatibility modules (`CML98` and `CML98Ext`) to ease transition from version 0.9.8. Crystal does not provide these modules, but the mapping tables below can help translate old code.
+SML/NJ CML provided two backwards compatibility modules (`CML98` and `CML98Ext`)
+to ease transition from version 0.9.8. Crystal does not provide these modules,
+but the mapping tables below can help translate old code.
 
 ## Name changes (SML/NJ 0.9.8 to 1.0+)
 
-The following table shows name changes from SML/NJ CML 0.9.8 to 1.0+ (as documented in the original porting guide):
+The following table shows name changes from SML/NJ CML 0.9.8 to 1.0+ (as
+documented in the original porting guide):
 
 | Old name (0.9.8) | New name (1.0+) | Crystal equivalent |
 |------------------|-----------------|-------------------|
@@ -34,13 +43,17 @@ The following table shows name changes from SML/NJ CML 0.9.8 to 1.0+ (as documen
 
 **Notes**:
 
-*   Crystal uses `_evt` suffix for event-returning operations (e.g., `recv_evt`, `send_evt`)
-*   Timeout functions: `CML.timeout(duration)` returns an event that becomes enabled after the duration
+*   Crystal uses `_evt` suffix for event-returning operations (e.g., `recv_evt`,
+  `send_evt`)
+*   Timeout functions: `CML.timeout(duration)` returns an event that becomes
+  enabled after the duration
 *   The `at_time` function takes a `Time` object rather than a timeout value
 
 ## Input/output
 
-Significant changes occurred in SML/NJ CML 0.9.8 to 1.0+ regarding I/O operations. The old `CIO` structure provided event-valued versions of SML/NJ's `IO` signature. This was replaced with Basis Library-compatible interfaces.
+Significant changes occurred in SML/NJ CML 0.9.8 to 1.0+ regarding I/O
+operations. The old `CIO` structure provided event-valued versions of SML/NJ's
+`IO` signature. This was replaced with Basis Library-compatible interfaces.
 
 In Crystal, I/O events are provided through the `CML::IOEvents` module:
 
@@ -57,7 +70,8 @@ CML::Socket.accept_evt(socket : Socket) : Event(Socket)
 
 ## Condition variables
 
-Condition variables from SML/NJ CML are represented as `CML::CVar(T)` in Crystal. The API is similar but uses Crystal naming conventions:
+Condition variables from SML/NJ CML are represented as `CML::CVar(T)` in
+Crystal. The API is similar but uses Crystal naming conventions:
 
 ```crystal
 # Create a condition variable
@@ -75,7 +89,9 @@ cvar.broadcast
 
 ## Polling
 
-SML/NJ CML 0.9.8 had a `poll` operation providing non-blocking `sync`. This was eliminated in 1.0+ in favor of non-blocking operations on basic communication types.
+SML/NJ CML 0.9.8 had a `poll` operation providing non-blocking `sync`. This was
+eliminated in 1.0+ in favor of non-blocking operations on basic communication
+types.
 
 Crystal provides non-blocking variants for many operations:
 
@@ -108,7 +124,8 @@ mvar.take_evt(nowait: true)
     *   `spawn` → `CML.spawn`
     *   `Mailbox.mailbox` → `CML.mailbox`
 
-4.  **Threads vs fibers**: Crystal uses cooperative fibers; explicit yielding may be needed with `CML.yield`
+4.  **Threads vs fibers**: Crystal uses cooperative fibers; explicit yielding may
+   be needed with `CML.yield`
 
 ### Common API Mappings
 
@@ -196,7 +213,8 @@ CML.spawn { consumer(ch) }
 
 *   [CML documentation](cml.md) - Core CML structure
 *   [Crystal CML Manual](../cml_manual.md) - Crystal-specific overview
-*   [SML/NJ CML Documentation](https://www.smlnj.org/doc/) - Original documentation
+*   [SML/NJ CML Documentation](https://www.smlnj.org/doc/) - Original
+  documentation
 
 ---
 

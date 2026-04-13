@@ -1,6 +1,8 @@
 # CML Cookbook: Idioms for Concurrent Coordination
 
-This cookbook provides practical patterns and recipes for using the CML library in Crystal. Each idiom demonstrates a common concurrency scenario using CML events, channels, and helpers.
+This cookbook provides practical patterns and recipes for using the CML library
+in Crystal. Each idiom demonstrates a common concurrency scenario using CML
+events, channels, and helpers.
 
 ## 1. Timeout with after
 
@@ -72,11 +74,24 @@ udp.bind("127.0.0.1", 12345)
 CML.sync(CML.udp_send_evt(udp, "hello".to_slice, "127.0.0.1", 12345))
 ```
 
-## 4. Chat room with multiple senders/receivers
+## 7. Anti-hang pattern for specs
+
+```crystal
+def sync_with_timeout(evt : CML::Event(T), timeout = 2.seconds) : T forall T
+  result = CML.select(evt, CML.timeout(timeout))
+  raise "timed out waiting for event after #{timeout.total_seconds}s" if result.nil?
+  result.as(T)
+end
+```
+
+Use this when testing socket/IO/context operations so failures are explicit and
+the suite does not hang indefinitely.
+
+## 8. Chat room with multiple senders/receivers
 
 See `examples/chat_demo.cr` for a full example.
 
-## 5. Timeout worker pattern
+## 9. Timeout worker pattern
 
 ```crystal
 result = CML.sync(CML.with_timeout(long_running_evt, 2.seconds))

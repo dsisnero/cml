@@ -1,20 +1,21 @@
 # Crystal CML How-To Guide
 
-This guide demonstrates how to use the Crystal CML port (`src/cml`) with practical examples adapted from "Concurrent Programming in ML" by John Reppy.
+This guide demonstrates how to use the Crystal CML port (`src/cml`) with
+practical examples adapted from "Concurrent Programming in ML" by John Reppy.
 
 ## Table of Contents
 
-1. [Getting Started](#getting-started)
-2. [Basic Channel Operations](#basic-channel-operations)
-3. [Event Combinators](#event-combinators)
-4. [Selective Communication](#selective-communication)
-5. [Timeouts and Timing](#timeouts-and-timing)
-6. [Synchronization Primitives](#synchronization-primitives)
-7. [Client-Server Patterns](#client-server-patterns)
-8. [Process Networks](#process-networks)
-9. [Advanced Patterns](#advanced-patterns)
-10. [Error Handling](#error-handling)
-11. [Performance Tips](#performance-tips)
+1.  [Getting Started](#getting-started)
+2.  [Basic Channel Operations](#basic-channel-operations)
+3.  [Event Combinators](#event-combinators)
+4.  [Selective Communication](#selective-communication)
+5.  [Timeouts and Timing](#timeouts-and-timing)
+6.  [Synchronization Primitives](#synchronization-primitives)
+7.  [Client-Server Patterns](#client-server-patterns)
+8.  [Process Networks](#process-networks)
+9.  [Advanced Patterns](#advanced-patterns)
+10.  [Error Handling](#error-handling)
+11.  [Performance Tips](#performance-tips)
 
 ## Getting Started
 
@@ -333,29 +334,35 @@ sleep 0.2
 
 The cell server is a classic example that demonstrates several key CML concepts:
 
-1. **Separation of interface and implementation** - Clients interact through simple `get` and `put` methods
-2. **Serialized access** - The server thread ensures only one operation happens at a time
-3. **Non-blocking design** - The server never blocks on individual operations
-4. **Message passing** - All communication happens through channels
+1.  **Separation of interface and implementation** - Clients interact through
+   simple `get` and `put` methods
+2.  **Serialized access** - The server thread ensures only one operation happens
+   at a time
+3.  **Non-blocking design** - The server never blocks on individual operations
+4.  **Message passing** - All communication happens through channels
 
-#### Design Rationale:
+#### Design Rationale
 
 **Why use two channels?**
-- `req_ch`: For sending requests to the server (GET or PUT)
-- `reply_ch`: For the server to send responses back (only for GET operations)
+*   `req_ch`: For sending requests to the server (GET or PUT)
+*   `reply_ch`: For the server to send responses back (only for GET operations)
 
-This separation allows the server to handle multiple clients without getting their responses mixed up. Each GET request gets its own reply on the shared reply channel, but since the server processes requests sequentially, there's no confusion.
+This separation allows the server to handle multiple clients without getting
+their responses mixed up. Each GET request gets its own reply on the shared
+reply channel, but since the server processes requests sequentially, there's no
+confusion.
 
-**Why the server loop pattern?**
-The server maintains state (`current_value`) and processes requests one at a time. This ensures:
-- Atomic updates (no race conditions between concurrent puts)
-- Consistent reads (a get always sees the most recent put)
-- Simple error handling (exceptions don't corrupt server state)
+**Why the server loop pattern?** The server maintains state (`current_value`)
+and processes requests one at a time. This ensures:
+*   Atomic updates (no race conditions between concurrent puts)
+*   Consistent reads (a get always sees the most recent put)
+*   Simple error handling (exceptions don't corrupt server state)
 
 **Why is this non-blocking?**
-- The server only blocks on `CML.sync(@req_ch.recv_evt)` - waiting for the next request
-- Clients block only when necessary (waiting for a reply on GET)
-- PUT operations are asynchronous - clients don't wait for confirmation
+* The server only blocks on `CML.sync(@req_ch.recv_evt)` - waiting for the next
+  request
+*   Clients block only when necessary (waiting for a reply on GET)
+*   PUT operations are asynchronous - clients don't wait for confirmation
 
 ```crystal
 # Cell server interface
@@ -425,14 +432,18 @@ end
 sleep 0.2
 ```
 
-#### Key Insights:
+#### Key Insights
 
-1. **The server is a state machine** - It transitions between states based on messages
-2. **Channels provide synchronization** - The rendezvous ensures requests are processed in order
-3. **No locks needed** - The single-threaded server naturally serializes access
-4. **Scalable pattern** - This same pattern works for databases, caches, and other shared resources
+1.  **The server is a state machine** - It transitions between states based on
+   messages
+2.  **Channels provide synchronization** - The rendezvous ensures requests are
+   processed in order
+3.  **No locks needed** - The single-threaded server naturally serializes access
+4.  **Scalable pattern** - This same pattern works for databases, caches, and
+   other shared resources
 
-This design is fundamental to CML: complex synchronization emerges from simple message-passing patterns, not from low-level locking primitives.
+This design is fundamental to CML: complex synchronization emerges from simple
+message-passing patterns, not from low-level locking primitives.
 
 ### Unique ID Service (From Book Section 4.2.1)
 
@@ -608,17 +619,20 @@ end
 
 ### Parallel Build System (From Book Chapter 7)
 
-The build system example demonstrates how CML can orchestrate complex workflows with dependencies. This is one of the most sophisticated examples in the book, showing how CML's event system can model real-world concurrent systems.
+The build system example demonstrates how CML can orchestrate complex workflows
+with dependencies. This is one of the most sophisticated examples in the book,
+showing how CML's event system can model real-world concurrent systems.
 
-#### Key Concepts Demonstrated:
+#### Key Concepts Demonstrated
 
-1. **Dataflow Networks** - Build tasks as nodes in a dependency graph
-2. **Multicast Channels** - Broadcasting completion signals to multiple dependents
-3. **Non-blocking Coordination** - Tasks run in parallel where possible
-4. **Error Propagation** - Failures cascade through the dependency graph
-5. **Dynamic Graph Construction** - Building the task network from a makefile
+1.  **Dataflow Networks** - Build tasks as nodes in a dependency graph
+2.  **Multicast Channels** - Broadcasting completion signals to multiple
+   dependents
+3.  **Non-blocking Coordination** - Tasks run in parallel where possible
+4.  **Error Propagation** - Failures cascade through the dependency graph
+5.  **Dynamic Graph Construction** - Building the task network from a makefile
 
-#### Architecture Overview:
+#### Architecture Overview
 
 ```
 Controller
@@ -636,27 +650,27 @@ Root Node (final target)
 Controller
 ```
 
-#### Why This Design Uses Specific CML Features:
+#### Why This Design Uses Specific CML Features
 
 **1. Multicast Channels for Dependency Broadcasting**
-- When a file finishes building, it needs to notify ALL its dependents
-- Regular channels would require one channel per dependent (inefficient)
-- Multicast channels allow one-to-many notification efficiently
+*   When a file finishes building, it needs to notify ALL its dependents
+*   Regular channels would require one channel per dependent (inefficient)
+*   Multicast channels allow one-to-many notification efficiently
 
 **2. Two-Phase Execution**
-- **Phase 1**: Signal all leaf nodes to check their timestamps
-- **Phase 2**: Internal nodes wait for ALL antecedents before building
-- This ensures correct dependency ordering without explicit scheduling
+* **Phase 1**: Signal all leaf nodes to check their timestamps
+* **Phase 2**: Internal nodes wait for ALL antecedents before building
+*   This ensures correct dependency ordering without explicit scheduling
 
 **3. Non-blocking Through Event Composition**
-- Each node uses `CML.sync` only when it needs to wait
-- While waiting, other nodes can make progress
-- The system never deadlocks because dependencies form a DAG
+*   Each node uses `CML.sync` only when it needs to wait
+*   While waiting, other nodes can make progress
+*   The system never deadlocks because dependencies form a DAG
 
 **4. Error Handling Through Stamp Types**
-- `Stamp = Time | StampError` - unified result type
-- Errors propagate automatically through the graph
-- No need for explicit error-checking at each node
+*   `Stamp = Time | StampError` - unified result type
+*   Errors propagate automatically through the graph
+*   No need for explicit error-checking at each node
 
 ```crystal
 require "./src/cml"
@@ -834,29 +848,29 @@ ensure
 end
 ```
 
-#### Why This Design is Non-blocking and Efficient:
+#### Why This Design is Non-blocking and Efficient
 
 **1. Maximum Parallelism**
-- All leaves start simultaneously when controller broadcasts
-- Independent branches of the dependency graph run in parallel
-- No task waits unless it actually has unmet dependencies
+*   All leaves start simultaneously when controller broadcasts
+*   Independent branches of the dependency graph run in parallel
+*   No task waits unless it actually has unmet dependencies
 
 **2. No Central Scheduler**
-- Each node manages its own dependencies using CML events
-- The controller only coordinates start and collects final result
-- This eliminates scheduler bottlenecks
+*   Each node manages its own dependencies using CML events
+*   The controller only coordinates start and collects final result
+*   This eliminates scheduler bottlenecks
 
 **3. Efficient Resource Usage**
-- Nodes only consume CPU when they have work to do
-- Waiting nodes yield to other fibers (Crystal's cooperative multitasking)
-- Memory usage scales with graph size, not with parallelism
+*   Nodes only consume CPU when they have work to do
+*   Waiting nodes yield to other fibers (Crystal's cooperative multitasking)
+*   Memory usage scales with graph size, not with parallelism
 
 **4. Natural Error Handling**
-- Errors propagate through the graph automatically
-- Failed nodes don't block unrelated branches
-- The system degrades gracefully under partial failure
+*   Errors propagate through the graph automatically
+*   Failed nodes don't block unrelated branches
+*   The system degrades gracefully under partial failure
 
-#### Comparison with Traditional Approaches:
+#### Comparison with Traditional Approaches
 
 | Traditional Make | CML Build System |
 |-----------------|------------------|
@@ -866,7 +880,9 @@ end
 | Complex scheduling logic | Simple dataflow semantics |
 | Error stops entire build | Errors propagate but don't halt unrelated work |
 
-This example shows how CML's event-based model can express complex coordination patterns naturally, without the complexity of traditional thread-based approaches.
+This example shows how CML's event-based model can express complex coordination
+patterns naturally, without the complexity of traditional thread-based
+approaches.
 
 ## Advanced Patterns
 
@@ -1336,7 +1352,9 @@ end
 
 ## Understanding CML's Non-blocking Architecture
 
-CML's power comes from its unique approach to concurrency. Unlike traditional thread-based systems, CML is built around **first-class events** and **non-blocking registration**.
+CML's power comes from its unique approach to concurrency. Unlike traditional
+thread-based systems, CML is built around **first-class events** and
+**non-blocking registration**.
 
 ### Why CML is Fundamentally Non-blocking
 
@@ -1353,10 +1371,11 @@ evt = ch.send_evt(value)  # Just creates an event, doesn't block
 result = CML.sync(evt)    # Only blocks here, when we choose to synchronize
 ```
 
-**Key Insight**: In CML, you describe what you *want* to do (create events), then decide when to actually do it (call `sync`). This separation allows for:
-- Composing multiple possible actions before committing to one
-- Trying operations without blocking
-- Building complex synchronization from simple parts
+**Key Insight**: In CML, you describe what you *want* to do (create events),
+then decide when to actually do it (call `sync`). This separation allows for:
+*   Composing multiple possible actions before committing to one
+*   Trying operations without blocking
+*   Building complex synchronization from simple parts
 
 #### 2. The Two-Phase Protocol
 
@@ -1380,9 +1399,9 @@ end
 ```
 
 This is why the build system example works so well:
-- Nodes register interest in their dependencies (non-blocking)
-- While waiting, other independent nodes can run
-- The system automatically finds maximum parallelism
+*   Nodes register interest in their dependencies (non-blocking)
+*   While waiting, other independent nodes can run
+*   The system automatically finds maximum parallelism
 
 #### 3. Choice and Commitment
 
@@ -1401,9 +1420,9 @@ result = CML.sync(choice)
 ```
 
 **Why this matters**:
-- You can wait for the *first available* operation
-- Timeouts become just another event to choose from
-- The system never deadlocks waiting for the "wrong" channel
+* You can wait for the *first available* operation
+*   Timeouts become just another event to choose from
+*   The system never deadlocks waiting for the "wrong" channel
 
 #### 4. Comparison with Other Models
 
@@ -1415,9 +1434,9 @@ result = CML.sync(choice)
 | **Actors** | On message receive | Actors | Message passing |
 
 **CML's Advantage**: By making events first-class, CML allows you to:
-1. Build synchronization abstractions (like the build system)
-2. Compose concurrent operations declaratively
-3. Reason about concurrency at a higher level
+1.  Build synchronization abstractions (like the build system)
+2.  Compose concurrent operations declaratively
+3.  Reason about concurrency at a higher level
 
 ### Real-World Implications
 
@@ -1430,13 +1449,14 @@ Let's examine why the build system is non-blocking:
 stamps = antecedents.map { |port| CML.sync(port.recv_evt) }
 ```
 
-1. **Node A** tries to receive from its dependencies
-2. If dependencies aren't ready, Node A's fiber yields
-3. **Node B** (independent) can now run
-4. When Node B finishes, it notifies its dependents
-5. Node A resumes when ALL its antecedents are ready
+1.  **Node A** tries to receive from its dependencies
+2.  If dependencies aren't ready, Node A's fiber yields
+3.  **Node B** (independent) can now run
+4.  When Node B finishes, it notifies its dependents
+5.  Node A resumes when ALL its antecedents are ready
 
-**No central scheduler needed** - The event system automatically finds work that can proceed.
+**No central scheduler needed** - The event system automatically finds work that
+can proceed.
 
 #### The Cell Server Revisited
 
@@ -1456,55 +1476,70 @@ end
 ```
 
 **Why this scales**:
-- Server only blocks waiting for requests
-- Processing is immediate (no I/O, no waiting)
-- Many clients can be served by one server thread
-- Memory usage is constant regardless of client count
+*   Server only blocks waiting for requests
+*   Processing is immediate (no I/O, no waiting)
+*   Many clients can be served by one server thread
+*   Memory usage is constant regardless of client count
 
 ### Key Design Principles
 
-1. **Make Waiting Explicit**: Use `sync()` only when you actually need to wait
-2. **Compose Before Committing**: Build complex event expressions before synchronizing
+1.  **Make Waiting Explicit**: Use `sync()` only when you actually need to wait
+2.  **Compose Before Committing**: Build complex event expressions before
+   synchronizing
 3. **Yield Freely**: Crystal fibers are cheap - yield often to allow parallelism
-4. **Embrace Events**: Think in terms of "what events might happen" not "what threads should do"
+4.  **Embrace Events**: Think in terms of "what events might happen" not "what
+   threads should do"
 
-This architecture is why CML can express complex coordination patterns (like the build system) simply and efficiently, while traditional approaches require complex scheduling logic.
+This architecture is why CML can express complex coordination patterns (like the
+build system) simply and efficiently, while traditional approaches require
+complex scheduling logic.
 
 ## Conclusion
 
-The Crystal CML port provides a powerful, composable concurrency model that follows the same principles as SML/NJ CML. Key takeaways:
+The Crystal CML port provides a powerful, composable concurrency model that
+follows the same principles as SML/NJ CML. Key takeaways:
 
-1. **Events are first-class** - They can be passed as arguments, returned from functions, and composed
-2. **sync() is the only blocking operation** - All event registration is non-blocking
-3. **Combinators enable abstraction** - `wrap`, `guard`, `choose`, `with_nack` allow building complex synchronization from simple parts
-4. **Channels provide rendezvous synchronization** - Synchronous communication with strong guarantees
-5. **The model is deterministic** - With proper design, concurrent programs can be reasoned about formally
+1.  **Events are first-class** - They can be passed as arguments, returned from
+   functions, and composed
+2.  **sync() is the only blocking operation** - All event registration is
+   non-blocking
+3.  **Combinators enable abstraction** - `wrap`, `guard`, `choose`, `with_nack`
+   allow building complex synchronization from simple parts
+4.  **Channels provide rendezvous synchronization** - Synchronous communication
+   with strong guarantees
+5.  **The model is deterministic** - With proper design, concurrent programs can
+   be reasoned about formally
 
-For more examples, see the `examples/` directory and the original book "Concurrent Programming in ML" by John Reppy.
+For more examples, see the `examples/` directory and the original book
+"Concurrent Programming in ML" by John Reppy.
 
 ## Linda Tuple Space System (From Book Chapter 9)
 
-The Linda tuple space system is one of the most sophisticated examples in the book, demonstrating how CML can implement distributed coordination primitives. Linda provides a **distributed shared memory** model where processes communicate by reading and writing **tuples** (structured data) to a shared **tuple space**.
+The Linda tuple space system is one of the most sophisticated examples in the
+book, demonstrating how CML can implement distributed coordination primitives.
+Linda provides a **distributed shared memory** model where processes communicate
+by reading and writing **tuples** (structured data) to a shared **tuple space**.
 
-### Key Linda Concepts:
+### Key Linda Concepts
 
-1. **Tuple Space**: A globally shared, associative memory
-2. **Tuples**: Structured data `(tag, field1, field2, ...)`
-3. **Templates**: Patterns with wildcards and formals for matching
-4. **Operations**:
-   - `out(tuple)`: Put a tuple into the space
-   - `in(template)`: Remove and return a matching tuple
-   - `rd(template)`: Read (non-destructively) a matching tuple
+1.  **Tuple Space**: A globally shared, associative memory
+2.  **Tuples**: Structured data `(tag, field1, field2, ...)`
+3.  **Templates**: Patterns with wildcards and formals for matching
+4.  **Operations**:
+    *   `out(tuple)`: Put a tuple into the space
+    *   `in(template)`: Remove and return a matching tuple
+    *   `rd(template)`: Read (non-destructively) a matching tuple
 
-### Why Linda is Interesting for CML:
+### Why Linda is Interesting for CML
 
-1. **Distributed Coordination**: Shows how CML can build distributed systems
-2. **Complex Protocols**: Uses multiple CML features together
-3. **Real-world Pattern**: Tuple spaces are used in real distributed systems
+1.  **Distributed Coordination**: Shows how CML can build distributed systems
+2.  **Complex Protocols**: Uses multiple CML features together
+3.  **Real-world Pattern**: Tuple spaces are used in real distributed systems
 
-### Architecture Overview:
+### Architecture Overview
 
-The CML-Linda implementation uses a **read-all, write-one** distribution strategy:
+The CML-Linda implementation uses a **read-all, write-one** distribution
+strategy:
 
 ```
 Client Program
@@ -1519,7 +1554,7 @@ Tuple Servers (distributed)
 Tuple Stores (hash tables)
 ```
 
-### How CML Classes are Used:
+### How CML Classes are Used
 
 #### 1. **Channels for Local Communication**
 ```crystal
@@ -1576,7 +1611,7 @@ CML.spawn do
 end
 ```
 
-### Complete Linda Implementation Example:
+### Complete Linda Implementation Example
 
 Here's a simplified but complete implementation showing the key patterns:
 
@@ -1987,68 +2022,73 @@ end
 dining_philosophers(5)
 ```
 
-### Key Design Insights:
+### Key Design Insights
 
 #### 1. **Why Multicast Channels?**
-- Input requests must be broadcast to **all** tuple servers
-- Regular channels would require N channels for N servers
-- Multicast provides efficient one-to-many communication
-- Each proxy gets a `port` from the multicast channel
+* Input requests must be broadcast to **all** tuple servers
+*   Regular channels would require N channels for N servers
+*   Multicast provides efficient one-to-many communication
+*   Each proxy gets a `port` from the multicast channel
 
 #### 2. **Why with_nack for Input Operations?**
-- Input operations can be used in `choose` expressions
-- If another event is chosen, the input must be cancelled
-- `with_nack` provides automatic cancellation
-- Cancellation messages must be sent to all servers
+*   Input operations can be used in `choose` expressions
+*   If another event is chosen, the input must be cancelled
+*   `with_nack` provides automatic cancellation
+*   Cancellation messages must be sent to all servers
 
 #### 3. **Why Separate Output Server?**
-- Output distribution is a policy decision
-- Round-robin, hashing, or locality-aware policies
-- Separating policy from mechanism follows good design
-- Output server can be replaced without affecting clients
+*   Output distribution is a policy decision
+*   Round-robin, hashing, or locality-aware policies
+*   Separating policy from mechanism follows good design
+*   Output server can be replaced without affecting clients
 
 #### 4. **Why Proxies?**
-- Provide uniform interface to local and remote servers
-- Hide network communication details
-- Manage transaction state (mapping local IDs to remote IDs)
-- Buffer messages if server is busy
+*   Provide uniform interface to local and remote servers
+*   Hide network communication details
+*   Manage transaction state (mapping local IDs to remote IDs)
+*   Buffer messages if server is busy
 
 #### 5. **How This Achieves Distribution:**
-- **Read-all**: Input operations query all servers
-- **Write-one**: Output operations send to one server (by policy)
-- **Fault tolerance**: Can be added with replication
-- **Scalability**: More servers = more capacity
+* **Read-all**: Input operations query all servers
+* **Write-one**: Output operations send to one server (by policy)
+* **Fault tolerance**: Can be added with replication
+* **Scalability**: More servers = more capacity
 
-### Comparison with Simplified Implementation:
+### Comparison with Simplified Implementation
 
-The existing `src/cml/linda.cr` is a **local-only** simplification. The full distributed implementation adds:
+The existing `src/cml/linda.cr` is a **local-only** simplification. The full
+distributed implementation adds:
 
-1. **Network layer** with socket I/O events
-2. **Message serialization** for network communication
-3. **Transaction management** with unique IDs
-4. **Failure handling** (not shown in simplified version)
-5. **Join protocol** for dynamic membership
+1.  **Network layer** with socket I/O events
+2.  **Message serialization** for network communication
+3.  **Transaction management** with unique IDs
+4.  **Failure handling** (not shown in simplified version)
+5.  **Join protocol** for dynamic membership
 
-### Why This Matters for CML Understanding:
+### Why This Matters for CML Understanding
 
-The Linda implementation demonstrates how CML can be used to build **complex distributed systems** from simple primitives:
+The Linda implementation demonstrates how CML can be used to build
+**complex distributed systems** from simple primitives:
 
-1. **Channels** → Local communication
-2. **Multicast** → Broadcast communication
-3. **with_nack** → Transaction management
-4. **Events** → Non-blocking operations
-5. **Threads** → Concurrent components
+1.  **Channels** → Local communication
+2.  **Multicast** → Broadcast communication
+3.  **with_nack** → Transaction management
+4.  **Events** → Non-blocking operations
+5.  **Threads** → Concurrent components
 
-This shows that CML isn't just for simple concurrency - it's a **systems programming language** capable of building sophisticated distributed coordination primitives.
+This shows that CML isn't just for simple concurrency - it's a
+**systems programming language** capable of building sophisticated distributed
+coordination primitives.
 
 ## Practical Summary: What We've Learned
 
-Through these examples, we've seen how CML provides a unified model for concurrent programming:
+Through these examples, we've seen how CML provides a unified model for
+concurrent programming:
 
 ### 1. **From Simple to Complex**
-- **Cell Server**: Basic client-server pattern with serialized access
-- **Build System**: Complex workflow coordination with dependencies
-- **Linda**: Distributed coordination with sophisticated protocols
+* **Cell Server**: Basic client-server pattern with serialized access
+* **Build System**: Complex workflow coordination with dependencies
+* **Linda**: Distributed coordination with sophisticated protocols
 
 ### 2. **Key CML Patterns in Practice**
 
@@ -2061,27 +2101,29 @@ Through these examples, we've seen how CML provides a unified model for concurre
 
 ### 3. **Why CML's Design Matters**
 
-1. **Composability**: Events can be combined before synchronization
-2. **Abstraction**: Complex patterns emerge from simple primitives
-3. **Correctness**: The model prevents common concurrency bugs
-4. **Performance**: Non-blocking design enables maximum parallelism
+1.  **Composability**: Events can be combined before synchronization
+2.  **Abstraction**: Complex patterns emerge from simple primitives
+3.  **Correctness**: The model prevents common concurrency bugs
+4.  **Performance**: Non-blocking design enables maximum parallelism
 
 ### 4. **Applying These Patterns**
 
 When building with CML:
-1. **Think in events**, not threads
-2. **Compose before committing** with `choose()` and `wrap()`
-3. **Use `with_nack`** for transactional operations
-4. **Broadcast with multicast** for one-to-many communication
-5. **Keep servers simple** with single-threaded event loops
+1.  **Think in events**, not threads
+2.  **Compose before committing** with `choose()` and `wrap()`
+3.  **Use `with_nack`** for transactional operations
+4.  **Broadcast with multicast** for one-to-many communication
+5.  **Keep servers simple** with single-threaded event loops
 
-The examples from the book show that CML isn't just an academic exercise - it's a practical tool for building real concurrent systems, from simple synchronization primitives to complex distributed coordination.
+The examples from the book show that CML isn't just an academic exercise - it's
+a practical tool for building real concurrent systems, from simple
+synchronization primitives to complex distributed coordination.
 
 ## Further Reading
 
-1. `src/cml.cr` - Core CML implementation
-2. `src/cml/` - Primitive implementations (ivar, mvar, mailbox, etc.)
-3. `examples/` - Working examples of CML patterns
-4. `spec/` - Test specifications showing correct usage
-5. Original book: "Concurrent Programming in ML" by John Reppy
-6. Chapter 9 - Complete Linda implementation details
+1.  `src/cml.cr` - Core CML implementation
+2.  `src/cml/` - Primitive implementations (ivar, mvar, mailbox, etc.)
+3.  `examples/` - Working examples of CML patterns
+4.  `spec/` - Test specifications showing correct usage
+5.  Original book: "Concurrent Programming in ML" by John Reppy
+6.  Chapter 9 - Complete Linda implementation details

@@ -1,10 +1,14 @@
 # CML Debugging Guide
 
-This guide explains how to use the CML tracing system to debug code that is not working as expected—whether due to logic bugs, race conditions, or performance issues.
+This guide explains how to use the CML tracing system to debug code that is not
+working as expected—whether due to logic bugs, race conditions, or performance
+issues.
 
 ## Overview
 
-CML's tracing system provides deep visibility into event registration, commit/cancel outcomes, fiber context, and channel operations. It is designed for both correctness debugging and performance analysis.
+CML's tracing system provides deep visibility into event registration,
+commit/cancel outcomes, fiber context, and channel operations. It is designed
+for both correctness debugging and performance analysis.
 
 ## Enabling Tracing
 
@@ -70,6 +74,16 @@ CML::Tracer.set_output(File.open("trace.log", "w"))
 *   Use tags and event filters to focus on the subsystem or operation of interest.
 *   Redirect output to a file for offline analysis.
 
+### 5. Diagnosing Hangs (preferred workflow)
+
+1.  Run specs with `--verbose` to identify the exact hanging example.
+2.  Add an explicit timeout race around the blocking event:
+    `CML.select(evt, CML.timeout(2.seconds))`.
+3.  Fail with a label (`"timed out waiting for accept"`) so the stuck operation
+    is obvious in CI output.
+4.  Enable tracing for timeout/transaction paths and inspect whether the
+    transaction ever commits or cancels.
+
 ## Real-World Trace Usage Examples
 
 ### Example 1: Debugging a Stuck Channel
@@ -84,7 +98,8 @@ CML::Tracer.set_filter_tags(["chan"])
 CML::Tracer.set_output(File.open("trace.log", "w"))
 ```
 
-Run your program and inspect `trace.log` for missing or delayed `send_committed` events.
+Run your program and inspect `trace.log` for missing or delayed `send_committed`
+events.
 
 ### Example 2: Tracking a Specific Fiber
 
@@ -106,6 +121,10 @@ CML.trace "MVar.put", value, tag: "mvar"
 CML::Tracer.set_filter_tags(["timer"])
 ```
 
+For timeout/cancellation debugging, useful trace points include:
+`TimeoutEvent.schedule`, `TimeoutEvent.deliver`, `TransactionId.try_cancel`,
+`TransactionId.try_commit_and_resume`.
+
 ### Example 4: Debugging Choice Outcomes
 
 To ensure only one event in a choice is committed:
@@ -116,7 +135,8 @@ CML.trace "Pick.cancelled", event_id, tag: "pick"
 CML::Tracer.set_filter_tags(["pick"])
 ```
 
-Check that for each choice, only one `committed` event appears per group of related event IDs.
+Check that for each choice, only one `committed` event appears per group of
+related event IDs.
 
 ## Best Practices
 
@@ -124,6 +144,8 @@ Check that for each choice, only one `committed` event appears per group of rela
 *   Filter by tag or event to reduce noise and focus on the problem.
 *   Use fiber names to track specific concurrent operations.
 *   Always disable tracing in production for zero overhead.
+*   In specs, never leave indefinite blocking operations unbounded; always race
+    with an explicit timeout event.
 
 ## Reference
 

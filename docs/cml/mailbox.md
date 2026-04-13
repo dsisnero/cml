@@ -1,12 +1,17 @@
 # The Mailbox structure
 
-This document is adapted from the SML/NJ CML documentation (`mailbox.mldoc`) for the Crystal CML implementation.
+This document is adapted from the SML/NJ CML documentation (`mailbox.mldoc`) for
+the Crystal CML implementation.
 
 ## Overview
 
-The `Mailbox` structure provides buffered asynchronous channels, which we call mailboxes. Unlike synchronous channels (`Chan`), send operations are non-blocking (producer can always enqueue). Receive operations block until a message is available.
+The `Mailbox` structure provides buffered asynchronous channels, which we call
+mailboxes. Unlike synchronous channels (`Chan`), send operations are
+non-blocking (producer can always enqueue). Receive operations block until a
+message is available.
 
-In Crystal, mailboxes are implemented as `CML::Mailbox(T)` class. Module functions are available via `CML.mailbox`, `CML.same_mailbox`, etc.
+In Crystal, mailboxes are implemented as `CML::Mailbox(T)` class. Module
+functions are available via `CML.mailbox`, `CML.same_mailbox`, etc.
 
 ## Type `Mailbox(T)`
 
@@ -14,8 +19,8 @@ In Crystal, mailboxes are implemented as `CML::Mailbox(T)` class. Module functio
 
 **Crystal**: `class CML::Mailbox(T)`
 
-**Description**:
-This is the type constructor for a mailbox. A mailbox is an unbounded, buffered communication channel.
+**Description**: This is the type constructor for a mailbox. A mailbox is an
+unbounded, buffered communication channel.
 
 ### `mailbox`
 
@@ -69,8 +74,8 @@ mb1.same?(mb2)
 def send(value : T) : Nil
 ```
 
-**Description**:
-Sends the message `msg` to the mailbox `mb`. Note that unlike `CML.send` (on channels), this is a non-blocking operation.
+**Description**: Sends the message `msg` to the mailbox `mb`. Note that unlike
+`CML.send` (on channels), this is a non-blocking operation.
 
 **Prototype**:
 
@@ -89,8 +94,9 @@ mb.send(msg)
 def recv : T
 ```
 
-**Description**:
-Receives the next message from the mailbox `mb`. If the mailbox is empty, then this blocks the calling thread until there is a message available.
+**Description**: Receives the next message from the mailbox `mb`. If the mailbox
+is empty, then this blocks the calling thread until there is a message
+available.
 
 **Prototype**:
 
@@ -129,8 +135,9 @@ mb.recv_evt
 def recv_poll : T?
 ```
 
-**Description**:
-This is the non-blocking version of `recv`. If the corresponding blocking form would block (because the mailbox is empty), then this returns `nil`, otherwise it returns the received message.
+**Description**: This is the non-blocking version of `recv`. If the
+corresponding blocking form would block (because the mailbox is empty), then
+this returns `nil`, otherwise it returns the received message.
 
 **Prototype**:
 
@@ -148,11 +155,16 @@ The Crystal implementation includes additional methods not present in SML/NJ:
 def reset : Nil
 ```
 
-Resets the mailbox to its initial state, clearing any pending messages and waiting receivers.
+Resets the mailbox to its initial state, clearing any pending messages and
+waiting receivers.
 
 ## Usage Notes
 
-Mailbox buffers are unbounded, which means that there is no flow control to prevent a producer from greatly outstripping a consumer, and thus exhausting memory. In situations where there is no natural limit to the rate of `send` operations, it is recommended that the synchronous channels from the `CML` structure be used instead.
+Mailbox buffers are unbounded, which means that there is no flow control to
+prevent a producer from greatly outstripping a consumer, and thus exhausting
+memory. In situations where there is no natural limit to the rate of `send`
+operations, it is recommended that the synchronous channels from the `CML`
+structure be used instead.
 
 ## See Also
 

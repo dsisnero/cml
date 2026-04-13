@@ -1,21 +1,16 @@
-(* CML Implementation of Linda - Chapter 9 of Cambridge Concurrent Programming in ML *)
-(* Organized into coherent modules following the book's architecture *)
-(* This is a conceptual implementation; many dependencies on SML/NJ and CML are assumed. *)
+(* CML-Linda implementation from Chapter 9 of Concurrent Programming in ML. *)
+(* The module layering follows the chapter architecture:
+   Tuple/DataRep/NetMessage/Network/TupleStore/TupleServer/OutputServer/Linda. *)
+(* This file is intended to be a faithful SML/NJ-style reproduction of the
+   chapter's code and protocol ideas, not a minimal sketch. *)
 
 (* Preamble: Assume necessary CML and library structures are available *)
-open CML  (* assume CML provides sync, spawn, channel, sendEvt, recvEvt, wrap, select, withNack *)
-structure Mailbox = CMLMailbox  (* mailbox library *)
-structure Multicast = CMLMulticast
-structure SimpleRPC = CMLSimpleRPC
-structure SyncVar = CMLSyncVar
-structure HashTableFn = HashTableFn  (* from SML/NJ Library *)
-structure Hash2TableFn = Hash2TableFn
+open CML
+structure Pack16Big = PackWord16Big
+structure Pack32Big = PackWord32Big
 
 (* Utility functions referenced but not defined in the chapter *)
 fun error msg = raise Fail msg
-fun hashTid (tid : thread_id) = Word.fromInt (tid : int)  (* dummy *)
-fun sameTid (tid1 : thread_id, tid2 : thread_id) = (tid1 = tid2)
-fun getTid () = 0  (* dummy thread ID *)
 fun think _ = ()
 fun eat _ = ()
 
@@ -74,18 +69,178 @@ sig
 end
 
 structure DataRep : DATA_REP = struct
-  (* Implementation not shown in book - placeholder *)
   type vector = Word8Vector.vector
   type array = Word8Array.array
-  fun decodeTuple (v, i) = raise Fail "DataRep.decodeTuple not implemented"
-  fun decodeTemplate (v, i) = raise Fail "DataRep.decodeTemplate not implemented"
-  fun decodeValues (v, i) = raise Fail "DataRep.decodeValues not implemented"
-  fun encodeTuple (t, a, i) = raise Fail "DataRep.encodeTuple not implemented"
-  fun encodeTemplate (t, a, i) = raise Fail "DataRep.encodeTemplate not implemented"
-  fun encodeValues (vs, a, i) = raise Fail "DataRep.encodeValues not implemented"
-  fun tupleSz t = raise Fail "DataRep.tupleSz not implemented"
-  fun templateSz t = raise Fail "DataRep.templateSz not implemented"
-  fun valuesSz vs = raise Fail "DataRep.valuesSz not implemented"
+  structure T = Tuple
+
+  fun chrAt (v, i) = Char.chr (Word8.toInt (Word8Vector.sub (v, i)))
+  fun putChr (a, i, c) = (
+        Word8Array.update (a, i, Word8.fromInt (Char.ord c));
+        i + 1)
+
+  fun putString (a, i, s) = let
+        fun loop (j, []) = j
+          | loop (j, c::r) = loop (putChr (a, j, c), r)
+      in
+        loop (i, String.explode s)
+      end
+
+  fun readToDelim (v, i, delim) = let
+        fun loop (j, acc) =
+          if (chrAt (v, j) = delim)
+            then (String.implode (List.rev acc), j + 1)
+            else loop (j + 1, chrAt (v, j) :: acc)
+      in
+        loop (i, [])
+      end
+
+  fun expectSemi (v, i) =
+        if (chrAt (v, i) = #";")
+          then i + 1
+          else error "DataRep: expected semicolon"
+
+  fun decodeInt s = (case Int.fromString s
+         of SOME n => n
+          | NONE => error "DataRep: bad int")
+
+  fun valSz (T.IVal n) = 2 + String.size (Int.toString n)
+    | valSz (T.BVal _) = 2
+    | valSz (T.SVal s) = 3 + String.size s + String.size (Int.toString (String.size s))
+
+  fun patSz (T.IPat n) = 2 + String.size (Int.toString n)
+    | patSz (T.BPat _) = 2
+    | patSz (T.SPat s) = 3 + String.size s + String.size (Int.toString (String.size s))
+    | patSz T.IFormal = 2
+    | patSz T.BFormal = 2
+    | patSz T.SFormal = 2
+    | patSz T.Wild = 2
+
+  fun encodeVal (T.IVal n, a, i) =
+        putChr (a, putString (a, putChr (a, i, #"i"), Int.toString n), #";")
+    | encodeVal (T.BVal true, a, i) = putChr (a, putChr (a, i, #"B"), #";")
+    | encodeVal (T.BVal false, a, i) = putChr (a, putChr (a, i, #"b"), #";")
+    | encodeVal (T.SVal s, a, i) = let
+        val i1 = putChr (a, i, #"s")
+        val i2 = putString (a, i1, Int.toString (String.size s))
+        val i3 = putChr (a, i2, #":")
+        val i4 = putString (a, i3, s)
+      in
+        putChr (a, i4, #";")
+      end
+
+  fun encodePat (T.IPat n, a, i) =
+        putChr (a, putString (a, putChr (a, i, #"i"), Int.toString n), #";")
+    | encodePat (T.BPat true, a, i) = putChr (a, putChr (a, i, #"B"), #";")
+    | encodePat (T.BPat false, a, i) = putChr (a, putChr (a, i, #"b"), #";")
+    | encodePat (T.SPat s, a, i) = let
+        val i1 = putChr (a, i, #"s")
+        val i2 = putString (a, i1, Int.toString (String.size s))
+        val i3 = putChr (a, i2, #":")
+        val i4 = putString (a, i3, s)
+      in
+        putChr (a, i4, #";")
+      end
+    | encodePat (T.IFormal, a, i) = putChr (a, putChr (a, i, #"x"), #";")
+    | encodePat (T.BFormal, a, i) = putChr (a, putChr (a, i, #"y"), #";")
+    | encodePat (T.SFormal, a, i) = putChr (a, putChr (a, i, #"z"), #";")
+    | encodePat (T.Wild, a, i) = putChr (a, putChr (a, i, #"w"), #";")
+
+  fun decodeVal (v, i) = (case chrAt (v, i)
+         of #"i" => let val (s, j) = readToDelim (v, i + 1, #";")
+            in (T.IVal (decodeInt s), j) end
+          | #"B" => (T.BVal true, expectSemi (v, i + 1))
+          | #"b" => (T.BVal false, expectSemi (v, i + 1))
+          | #"s" => let
+                val (lenS, j1) = readToDelim (v, i + 1, #":")
+                val len = decodeInt lenS
+                fun loop (k, 0, acc) = (String.implode (List.rev acc), k)
+                  | loop (k, n, acc) = loop (k + 1, n - 1, chrAt (v, k) :: acc)
+                val (s, j2) = loop (j1, len, [])
+              in
+                (T.SVal s, expectSemi (v, j2))
+              end
+          | _ => error "DataRep: bad value atom")
+
+  fun decodePat (v, i) = (case chrAt (v, i)
+         of #"i" => let val (s, j) = readToDelim (v, i + 1, #";")
+            in (T.IPat (decodeInt s), j) end
+          | #"B" => (T.BPat true, expectSemi (v, i + 1))
+          | #"b" => (T.BPat false, expectSemi (v, i + 1))
+          | #"s" => let
+                val (lenS, j1) = readToDelim (v, i + 1, #":")
+                val len = decodeInt lenS
+                fun loop (k, 0, acc) = (String.implode (List.rev acc), k)
+                  | loop (k, n, acc) = loop (k + 1, n - 1, chrAt (v, k) :: acc)
+                val (s, j2) = loop (j1, len, [])
+              in
+                (T.SPat s, expectSemi (v, j2))
+              end
+          | #"x" => (T.IFormal, expectSemi (v, i + 1))
+          | #"y" => (T.BFormal, expectSemi (v, i + 1))
+          | #"z" => (T.SFormal, expectSemi (v, i + 1))
+          | #"w" => (T.Wild, expectSemi (v, i + 1))
+          | _ => error "DataRep: bad pattern atom")
+
+  fun decodeValList (v, i) = let
+        fun loop (j, acc) =
+          if (chrAt (v, j) = #"e")
+            then (List.rev acc, expectSemi (v, j + 1))
+            else let val (x, j') = decodeVal (v, j) in loop (j', x::acc) end
+      in
+        loop (i, [])
+      end
+
+  fun decodePatList (v, i) = let
+        fun loop (j, acc) =
+          if (chrAt (v, j) = #"e")
+            then (List.rev acc, expectSemi (v, j + 1))
+            else let val (x, j') = decodePat (v, j) in loop (j', x::acc) end
+      in
+        loop (i, [])
+      end
+
+  fun encodeValList (vals, a, i) = let
+        fun loop ([], j) = putChr (a, putChr (a, j, #"e"), #";")
+          | loop (x::r, j) = loop (r, encodeVal (x, a, j))
+      in
+        loop (vals, i)
+      end
+
+  fun encodePatList (pats, a, i) = let
+        fun loop ([], j) = putChr (a, putChr (a, j, #"e"), #";")
+          | loop (x::r, j) = loop (r, encodePat (x, a, j))
+      in
+        loop (pats, i)
+      end
+
+  fun decodeTuple (v, i) = let
+        val (vals, j) = decodeValList (v, i)
+      in
+        case vals
+         of [] => error "DataRep.decodeTuple: empty tuple"
+          | key::rest => (T.T (key, rest), j)
+      end
+
+  fun decodeTemplate (v, i) = let
+        val (key, j1) = decodeVal (v, i)
+        val (pats, j2) = decodePatList (v, j1)
+      in
+        (T.T (key, pats), j2)
+      end
+
+  fun decodeValues (v, i) = decodeValList (v, i)
+
+  fun encodeTuple (T.T (key, rest), a, i) = encodeValList (key::rest, a, i)
+
+  fun encodeTemplate (T.T (key, rest), a, i) =
+        encodePatList (rest, a, encodeVal (key, a, i))
+
+  fun encodeValues (vals, a, i) = encodeValList (vals, a, i)
+
+  fun tupleSz (T.T (key, rest)) = 2 + List.foldl (fn (x, n) => n + valSz x) 0 (key::rest)
+  fun templateSz (T.T (key, rest)) =
+        valSz key + 2 + List.foldl (fn (x, n) => n + patSz x) 0 rest
+  fun valuesSz vals = 2 + List.foldl (fn (x, n) => n + valSz x) 0 vals
 end
 
 (* =========================================================================== *)
@@ -115,10 +270,10 @@ structure NetMessage = struct
   structure DR = DataRep
 
   fun recvMessage sock = let
-      val hdr = SockUtil.recvVec (sock, 4)
+      val hdr = Socket.recvVec (sock, 4)
       val kind = Pack16Big.subVec(hdr, 0)
       val len = LargeWord.toInt(Pack16Big.subVec(hdr, 1))
-      val data = SockUtil.recvVec (sock, len)
+      val data = Socket.recvVec (sock, len)
       fun getId () = LargeWord.toInt(Pack32Big.subVec(data, 0))
       fun getTuple () = #1 (DR.decodeTuple (data, 0))
       fun getPat () = #1 (DR.decodeTemplate (data, 4))
@@ -135,8 +290,58 @@ structure NetMessage = struct
       (* end case *)
     end
 
-  (* sendMessage omitted in book - placeholder *)
-  fun sendMessage (sock, msg) = raise Fail "NetMessage.sendMessage not implemented"
+  fun sendAllArr (sock, arr) = let
+      val len = Word8Array.length arr
+      fun loop i =
+        if (i >= len)
+          then ()
+          else let
+              val sl = Word8ArraySlice.slice (arr, i, SOME (len - i))
+              val n = Socket.sendArr (sock, sl)
+            in
+              if (n <= 0) then error "sendMessage: short write" else loop (i + n)
+            end
+    in
+      loop 0
+    end
+
+  fun sendMessage (sock, msg) = let
+      val (kind, len, fillBody) = (case msg
+           of OutTuple tuple => (0, DR.tupleSz tuple, fn a => ignore (DR.encodeTuple (tuple, a, 0)))
+            | InReq{transId, pat} => (
+                1, 4 + DR.templateSz pat,
+                fn a => (
+                  Pack32Big.update (a, 0, LargeWord.fromInt transId);
+                  ignore (DR.encodeTemplate (pat, a, 4))
+                ))
+            | RdReq{transId, pat} => (
+                2, 4 + DR.templateSz pat,
+                fn a => (
+                  Pack32Big.update (a, 0, LargeWord.fromInt transId);
+                  ignore (DR.encodeTemplate (pat, a, 4))
+                ))
+            | Accept{transId} => (
+                3, 4,
+                fn a => Pack32Big.update (a, 0, LargeWord.fromInt transId))
+            | Cancel{transId} => (
+                4, 4,
+                fn a => Pack32Big.update (a, 0, LargeWord.fromInt transId))
+            | InReply{transId, vals} => (
+                5, 4 + DR.valuesSz vals,
+                fn a => (
+                  Pack32Big.update (a, 0, LargeWord.fromInt transId);
+                  ignore (DR.encodeValues (vals, a, 4))
+                )))
+      val hdr = Word8Array.array (4, 0w0)
+      val data = Word8Array.array (len, 0w0)
+      val _ = Pack16Big.update (hdr, 0, LargeWord.fromInt kind)
+      val _ = Pack16Big.update (hdr, 1, LargeWord.fromInt len)
+      val _ = fillBody data
+      val _ = sendAllArr (sock, hdr)
+      val _ = sendAllArr (sock, data)
+    in
+      ()
+    end
 end
 
 (* =========================================================================== *)
@@ -195,14 +400,13 @@ sig
 end (* NETWORK *)
 
 structure Network : NETWORK = struct
-  datatype network = NETWORK of {shutdown: unit SyncVar.ivar}
+  type ts_id = int
+  type reply = {transId : int, vals : Tuple.val_atom list}
+  datatype network = NETWORK of {shutdown: unit -> unit}
   datatype server_conn = CONN of {
         out : NetMessage.message -> unit,
         replyEvt : reply event
       }
-
-  type ts_id = int
-  type reply = {transId : int, vals : Tuple.val_atom list}
 
   datatype client_req
     = OutTuple of Tuple.tuple
@@ -273,7 +477,8 @@ structure Network : NETWORK = struct
 
   fun spawnNetServer (myPort, startId, tsMb, addTS) = let
       val mySock = INetSock.TCP.socket()
-      fun loop nextId = let
+      val running = ref true
+      fun loop nextId = if !running then () else let
               val (newSock, addr) = Socket.accept mySock
               val proxyConn = spawnBuffers (nextId, newSock, tsMb)
               val (host, port) = INetSock.fromAddr addr
@@ -284,13 +489,16 @@ structure Network : NETWORK = struct
               in
                   addTS {name = name, id = nextId, conn = proxyConn};
                   loop (nextId+1)
-              end
+              end handle _ => if !running then () else loop nextId
       val port = getOpt(myPort, 7001)
+      fun doShutdown () = (
+            running := false;
+            (Socket.close mySock) handle _ => ())
       in
         Socket.bind (mySock, INetSock.any port);
         Socket.listen (mySock, 5);
         spawn (fn () => loop startId);
-        NETWORK{shutdown = SyncVar.iVar()}
+        NETWORK{shutdown = doShutdown}
       end
 
   fun initNetwork {port, remote, tsReqMb, addTS} = let
@@ -311,16 +519,20 @@ structure Network : NETWORK = struct
           }
         end
 
-  (* Stub implementations for send operations *)
-  fun sendOutTuple (CONN{out, ...}) tuple = out (NetMessage.OutTuple tuple)
+  (* Network send wrappers used by proxies/output server (Chapter 9 Listing 9.6). *)
+  fun sendOutTuple (CONN{out, ...}) tuple =
+        out (NetMessage.OutTuple tuple)
   fun sendInReq (CONN{out, ...}) {transId, remove, pat} =
-        out (if remove then NetMessage.InReq{transId=transId, pat=pat}
-                       else NetMessage.RdReq{transId=transId, pat=pat})
-  fun sendAccept (CONN{out, ...}) {transId} = out (NetMessage.Accept{transId=transId})
-  fun sendCancel (CONN{out, ...}) {transId} = out (NetMessage.Cancel{transId=transId})
+        out (if remove
+              then NetMessage.InReq{transId=transId, pat=pat}
+              else NetMessage.RdReq{transId=transId, pat=pat})
+  fun sendAccept (CONN{out, ...}) {transId} =
+        out (NetMessage.Accept{transId=transId})
+  fun sendCancel (CONN{out, ...}) {transId} =
+        out (NetMessage.Cancel{transId=transId})
   fun replyEvt (CONN{replyEvt, ...}) = replyEvt
 
-  fun shutdown (NETWORK{shutdown}) = SyncVar.iGet shutdown  (* placeholder *)
+  fun shutdown (NETWORK{shutdown}) = shutdown()
 end
 
 (* =========================================================================== *)
@@ -466,7 +678,7 @@ structure TupleStore : TUPLE_STORE = struct
     | (SOME(bucket as {items, waiting, holds})) => let
         fun look (_, []) = (
                 waiting := !waiting @
-                    [{reply=reply, id=id, ext=ext}],
+                    [{reply=reply, id=id, ext=ext}];
                 QueryTbl.insert queries (id, (Waiting, bucket));
                 NONE)
         | look (prefix, item :: r) = (
@@ -589,6 +801,7 @@ structure TupleServer : TUPLE_SERVER = struct
 
   fun proxyServer (myId, conn : conn_ops, reqEvt, initInReqs) = let
       val tbl = TransTbl.mkTable (32, Fail "TransTbl")
+      val {sendInReq, sendAccept, sendCancel, replyEvt} = conn
       val nextId = let val cnt = ref 0
             in
               fn () => let val id = !cnt in cnt := id+1; id end
@@ -598,19 +811,19 @@ structure TupleServer : TUPLE_SERVER = struct
             val req = {transId = id, remove = remove, pat = pat}
             in
               TransTbl.insert tbl (tid, id, {id=id, replFn=replFn});
-              #sendInReq conn req
+              sendInReq req
             end
         | handleMsg (CANCEL tid) = let
-            val {id, ...} = TransTbl.remove tbl tid
+            val {id, ...} = TransTbl.remove1 tbl tid
             in
-              #sendCancel conn {transId=id}
+              sendCancel {transId=id}
             end
         | handleMsg (ACCEPT(tid, tsId)) = let
-            val {id, ...} = TransTbl.remove tbl tid
+            val {id, ...} = TransTbl.remove1 tbl tid
             in
               if (tsId = myId)
-                then #sendAccept conn {transId=id}
-                else #sendCancel conn {transId=id}
+                then sendAccept {transId=id}
+                else sendCancel {transId=id}
             end
       fun handleReply {transId, vals} = (
           case TransTbl.find2 tbl transId
@@ -620,7 +833,7 @@ structure TupleServer : TUPLE_SERVER = struct
       fun loop () = (
           select [
               wrap (reqEvt, handleMsg),
-              wrap (#replyEvt conn, handleReply)
+              wrap (replyEvt, handleReply)
             ];
           loop ())
     in
@@ -784,7 +997,6 @@ sig
     | Wild
 
   datatype 'a tuple_rep = T of (val_atom * 'a list)
-
   type tuple = val_atom tuple_rep
   type template = pat_atom tuple_rep
 
@@ -801,29 +1013,14 @@ sig
 
 end
 
-structure Linda : LINDA = struct
+structure Linda = struct
   structure MChan = Multicast
   structure SRV = TupleServer
   structure Net = Network
+  open Tuple
 
-  datatype val_atom
-    = IVal of int
-    | SVal of string
-    | BVal of bool
-
-  datatype pat_atom
-    = IPat of int
-    | SPat of string
-    | BPat of bool
-    | IFormal
-    | SFormal
-    | BFormal
-    | Wild
-
-  datatype 'a tuple_rep = T of (val_atom * 'a list)
-
-  type tuple = val_atom tuple_rep
-  type template = pat_atom tuple_rep
+  type tuple = Tuple.tuple
+  type template = Tuple.template
 
   datatype tuple_space = TS of {
       request : SRV.ts_msg -> unit,

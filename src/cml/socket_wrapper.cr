@@ -271,15 +271,32 @@ module CML
         # Create a TCP server socket
         server = ::TCPServer.new(loopback, 0)
         port = server.local_address.port
+        accepted_ch = Channel(::TCPSocket | Exception).new(1)
 
-        # Create client TCP socket
-        client = ::TCPSocket.new
-        client.connect(loopback, port)
+        spawn do
+          begin
+            accepted_ch.send(server.accept)
+          rescue ex
+            accepted_ch.send(ex)
+          end
+        end
 
-        # Accept connection
-        accepted = server.accept
+        client = ::TCPSocket.new(loopback, port, nil, 5.seconds)
+
+        accepted = select
+        when result = accepted_ch.receive
+          case result
+          in ::TCPSocket
+            result
+          in Exception
+            raise result
+          end
+        when timeout(5.seconds)
+          client.close rescue nil
+          raise IO::TimeoutError.new("timed out accepting loopback stream pair")
+        end
+
         server.close
-
         {client, accepted}
       end
 

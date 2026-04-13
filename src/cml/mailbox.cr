@@ -27,7 +27,7 @@ module CML
       @mtx.synchronize do
         while entry = @receivers.shift?
           recv_slot, recv_done, recv_tid = entry
-          next if recv_tid.cancelled?
+          next unless recv_tid.active?
 
           recv_slot.set(value)
           recv_done.set(true)

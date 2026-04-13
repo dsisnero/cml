@@ -1,6 +1,8 @@
 # Core CML Reference
 
-This document is adapted from the SML/NJ CML documentation (`core-cml.mldoc`) for the Crystal CML implementation. It serves as a reference guide to the core CML modules and their APIs.
+This document is adapted from the SML/NJ CML documentation (`core-cml.mldoc`)
+for the Crystal CML implementation. It serves as a reference guide to the core
+CML modules and their APIs.
 
 ## Overview
 
@@ -12,7 +14,8 @@ Core CML includes the fundamental structures for concurrent programming:
 4.  **Barrier** - Barrier synchronization
 5.  **OS** - Operating system interface (file system, processes, I/O)
 
-In Crystal, these are organized into modules and classes within the `CML` namespace.
+In Crystal, these are organized into modules and classes within the `CML`
+namespace.
 
 ## Included Modules
 
@@ -82,12 +85,15 @@ Crystal CML includes additional functionality not present in SML/NJ Core CML:
 
 ## API Stability
 
-The Core CML API in Crystal aims to maintain compatibility with SML/NJ semantics while adapting to Crystal's type system and idioms. Breaking changes from SML/NJ are documented in the [Porting Guide](porting.md).
+The Core CML API in Crystal aims to maintain compatibility with SML/NJ semantics
+while adapting to Crystal's type system and idioms. Breaking changes from SML/NJ
+are documented in the [Porting Guide](porting.md).
 
 ## See Also
 
 *   [Crystal CML Manual](../cml_manual.md) - High-level overview
-*   [SML/NJ CML Documentation](https://www.smlnj.org/doc/) - Original documentation
+*   [SML/NJ CML Documentation](https://www.smlnj.org/doc/) - Original
+  documentation
 *   [Porting Guide](porting.md) - Porting from SML/NJ to Crystal
 
 ---

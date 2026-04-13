@@ -1,6 +1,8 @@
 # The Concurrent ML Reference Manual
 
-This document is adapted from the SML/NJ CML documentation (`refman.mldoc`) for the Crystal CML implementation. It serves as the main reference manual for the Concurrent ML library, covering both core concepts and library extensions.
+This document is adapted from the SML/NJ CML documentation (`refman.mldoc`) for
+the Crystal CML implementation. It serves as the main reference manual for the
+Concurrent ML library, covering both core concepts and library extensions.
 
 ## Overview
 
@@ -10,7 +12,8 @@ The Concurrent ML Reference Manual provides comprehensive documentation of:
 2.  **Core CML** - Primary structures for events, threads, and synchronization
 3.  **CML Library** - Extended functionality including multicast and tracing
 
-In Crystal, this manual is split across multiple documents for clarity, with this document serving as a table of contents and integration guide.
+In Crystal, this manual is split across multiple documents for clarity, with
+this document serving as a table of contents and integration guide.
 
 ## Document Structure
 
@@ -50,14 +53,17 @@ Extended functionality beyond core CML.
 
 ## Crystal CML Architecture
 
-Crystal's CML implementation follows the SML/NJ design with adaptations for Crystal's type system and concurrency model:
+Crystal's CML implementation follows the SML/NJ design with adaptations for
+Crystal's type system and concurrency model:
 
 ### Key Differences from SML/NJ
 
-1.  **Type system**: Generic types `Chan(T)`, `Event(T)` vs SML's `'a chan`, `'a event`
+1.  **Type system**: Generic types `Chan(T)`, `Event(T)` vs SML's `'a chan`,
+   `'a event`
 2.  **Concurrency model**: Cooperative fibers vs preemptive threads
 3.  **Namespace**: Single `CML` module vs multiple structures
-4.  **Extensions**: Additional features like `CML.after`, `CML.sleep`, `CML.spawn_evt`
+4.  **Extensions**: Additional features like `CML.after`, `CML.sleep`,
+   `CML.spawn_evt`
 
 ### Module Hierarchy
 
@@ -82,7 +88,9 @@ CML (top-level module)
 
 ### Events and Synchronization
 
-Only `CML.sync(evt)` blocks a fiber. Event registration (`poll` method) must remain non-blocking. This preserves the "one commit" invariant where each `choose` completes exactly one branch.
+Only `CML.sync(evt)` blocks a fiber. Event registration (`poll` method) must
+remain non-blocking. This preserves the "one commit" invariant where each
+`choose` completes exactly one branch.
 
 ```crystal
 # Event creation from channel receive
@@ -94,7 +102,8 @@ value = CML.sync(recv_evt)
 
 ### Threads and Fibers
 
-Crystal uses cooperative fibers, not preemptive threads. Use `CML.yield` for explicit context switching.
+Crystal uses cooperative fibers, not preemptive threads. Use `CML.yield` for
+explicit context switching.
 
 ```crystal
 CML.spawn do
@@ -122,7 +131,8 @@ result = CML.sync(choice)
 
 ## Porting from SML/NJ
 
-See the [Porting Guide](porting.md) for detailed mapping between SML/NJ CML and Crystal CML APIs.
+See the [Porting Guide](porting.md) for detailed mapping between SML/NJ CML and
+Crystal CML APIs.
 
 ## Example: Echo Server
 
@@ -152,12 +162,14 @@ CML.sync(CML.timeout(3.seconds))
 1.  **Read the basics**: [Basics](basics.md) for fundamental concepts
 2.  **Explore core API**: [CML structure](cml.md) for event operations
 3.  **Learn synchronization**: [SyncVar](sync-var.md) for shared state
-4.  **Use extended features**: [CML Library](cml-lib.md) for multicast and tracing
+4.  **Use extended features**: [CML Library](cml-lib.md) for multicast and
+   tracing
 
 ## See Also
 
 *   [Crystal CML Manual](../cml_manual.md) - High-level tutorial and examples
-*   [SML/NJ CML Documentation](https://www.smlnj.org/doc/) - Original documentation
+*   [SML/NJ CML Documentation](https://www.smlnj.org/doc/) - Original
+  documentation
 *   [Crystal CML Source Code](../../src/cml/) - Implementation source
 
 ---

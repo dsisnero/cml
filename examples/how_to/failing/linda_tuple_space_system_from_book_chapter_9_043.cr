@@ -5,10 +5,8 @@
 #
 # ----------------------------------------------------------
 
-require "../../src/cml/linda"
-
-require "../../src/cml"
-require "../../src/cml/multicast"
+require "../../../src/cml"
+require "../../../src/cml/multicast"
 
 module CML
   module Linda
@@ -23,9 +21,17 @@ module CML
 
       def initialize(@kind, @value); end
 
-      def self.int(i : Int32) = new(Kind::Int, i)
-      def self.string(s : String) = new(Kind::String, s)
-      def self.bool(b : Bool) = new(Kind::Bool, b)
+      def self.int(i : Int32)
+        new(Kind::Int, i)
+      end
+
+      def self.string(s : String)
+        new(Kind::String, s)
+      end
+
+      def self.bool(b : Bool)
+        new(Kind::Bool, b)
+      end
     end
 
     # Pattern atoms (literals, formals, wildcards)
@@ -41,13 +47,33 @@ module CML
 
       def initialize(@kind, @value = nil); end
 
-      def self.int_literal(i : Int32) = new(Kind::IntLiteral, i)
-      def self.string_literal(s : String) = new(Kind::StringLiteral, s)
-      def self.bool_literal(b : Bool) = new(Kind::BoolLiteral, b)
-      def self.int_formal = new(Kind::IntFormal)
-      def self.string_formal = new(Kind::StringFormal)
-      def self.bool_formal = new(Kind::BoolFormal)
-      def self.wild = new(Kind::Wild)
+      def self.int_literal(i : Int32)
+        new(Kind::IntLiteral, i)
+      end
+
+      def self.string_literal(s : String)
+        new(Kind::StringLiteral, s)
+      end
+
+      def self.bool_literal(b : Bool)
+        new(Kind::BoolLiteral, b)
+      end
+
+      def self.int_formal
+        new(Kind::IntFormal)
+      end
+
+      def self.string_formal
+        new(Kind::StringFormal)
+      end
+
+      def self.bool_formal
+        new(Kind::BoolFormal)
+      end
+
+      def self.wild
+        new(Kind::Wild)
+      end
     end
 
     # Tuple representation
@@ -335,13 +361,13 @@ def dining_philosophers(n : Int32)
   space = CML::Linda::DistributedTupleSpace.new(1)  # Single server for demo
 
   # Helper functions for creating tuples
-  def chopstick_tuple(pos : Int32)
+  chopstick_tuple = ->(pos : Int32) do
     tag = CML::Linda::ValAtom.string("chopstick")
     fields = [CML::Linda::ValAtom.int(pos)]
     CML::Linda::TupleRep.new(tag, fields)
   end
 
-  def ticket_tuple
+  ticket_tuple = -> do
     tag = CML::Linda::ValAtom.string("ticket")
     fields = [] of CML::Linda::ValAtom
     CML::Linda::TupleRep.new(tag, fields)
@@ -349,11 +375,11 @@ def dining_philosophers(n : Int32)
 
   # Initialize tuple space with chopsticks and tickets
   n.times do |i|
-    space.out(chopstick_tuple(i))
+    space.out(chopstick_tuple.call(i))
   end
 
   (n - 1).times do
-    space.out(ticket_tuple)
+    space.out(ticket_tuple.call)
   end
 
   # Philosopher thread
@@ -391,9 +417,9 @@ def dining_philosophers(n : Int32)
       sleep rand(0.1..0.3)
 
       # Return resources
-      space.out(chopstick_tuple(id))
-      space.out(chopstick_tuple((id + 1) % n))
-      space.out(ticket_tuple)
+      space.out(chopstick_tuple.call(id))
+      space.out(chopstick_tuple.call((id + 1) % n))
+      space.out(ticket_tuple.call)
 
       puts "Philosopher #{id} finished eating"
     end

@@ -1,12 +1,16 @@
 # CML Overview — Event Semantics and Architecture
 
-This document provides a deep dive into the Concurrent ML (CML) runtime implementation in Crystal, explaining the core concepts, event semantics, and architectural decisions.
+This document provides a deep dive into the Concurrent ML (CML) runtime
+implementation in Crystal, explaining the core concepts, event semantics, and
+architectural decisions.
 
 ## Core Concepts
 
 ### Events and Synchronization
 
-In CML, an **Event** represents a potential synchronization point that may produce a value when committed. The key insight is that events are **first-class** - they can be composed, transformed, and chosen between.
+In CML, an **Event** represents a potential synchronization point that may
+produce a value when committed. The key insight is that events are
+**first-class** - they can be composed, transformed, and chosen between.
 
 ```crystal
 abstract class Event(T)
@@ -43,7 +47,8 @@ class Pick(T)
 end
 ```
 
-This atomic commit mechanism guarantees the "one pick, one commit" principle - exactly one event in a `choose` will succeed.
+This atomic commit mechanism guarantees the "one pick, one commit" principle -
+exactly one event in a `choose` will succeed.
 
 ## Event Types
 
@@ -51,14 +56,15 @@ This atomic commit mechanism guarantees the "one pick, one commit" principle - e
 
 * **`AlwaysEvt(T)`**: Immediately succeeds with a fixed value
 * **`NeverEvt(T)`**: Never succeeds (useful for testing)
-* **`TimeoutEvt`**: Succeeds after a time duration
+* **`TimeoutEvt`**: Succeeds after a time duration via `TimerWheel`
 
 ### Channel Events
 
 * **`SendEvt(T)`**: Attempts to send a value on a channel
 * **`RecvEvt(T)`**: Attempts to receive from a channel
 
-Channels maintain separate queues for senders and receivers, matching them when both are available:
+Channels maintain separate queues for senders and receivers, matching them when
+both are available:
 
 ```crystal
 def register_send(value : T, pick : Pick(Nil)) : Proc(Nil)
@@ -170,11 +176,27 @@ This protocol ensures:
 2.  **Deterministic waiting**: `pick.wait` blocks until decision
 3.  **Proper cleanup**: `cancel.call` ensures no resource leaks
 
+## Timeout and Cancellation Internals
+
+`TimeoutEvt` registration is non-blocking and schedules a timer-wheel callback.
+Each waiting transaction gets its own timer id. This prevents cross-transaction
+cancel races when one timeout event instance is shared in composed choices.
+
+Recent cancellation safety rules:
+
+*   Transaction cleanup callbacks are installed and consumed under a dedicated
+  mutex so they run at most once.
+*   Runtime-wide fiber transaction lookup removes entries under lock, but performs
+  cancellation outside lock to reduce lock hold time.
+*   Timer callbacks are collected under lock and executed after lock release,
+  avoiding callback-under-lock deadlocks.
+
 ## Design Principles
 
 ### 1. One Pick, One Commit
 
-Every `Pick` instance can be decided at most once, ensuring exactly one event in a choice succeeds.
+Every `Pick` instance can be decided at most once, ensuring exactly one event in
+a choice succeeds.
 
 ### 2. Zero Blocking in Registration
 
@@ -182,11 +204,17 @@ Every `Pick` instance can be decided at most once, ensuring exactly one event in
 
 ### 3. Fiber-Safe Cancellation
 
-Every registered event returns a cancellation procedure that can be safely called from any fiber.
+Every registered event returns a cancellation procedure that can be safely
+called from any fiber.
 
 ### 4. Deterministic Behavior
 
 The system behaves predictably regardless of fiber scheduling order.
+
+### 5. Active Waiter Resume
+
+Synchronization primitives resume only active transaction ids. Cancelled or
+already committed waiters are ignored to avoid stale wakeups.
 
 ## Memory Safety
 
@@ -202,7 +230,8 @@ The system behaves predictably regardless of fiber scheduling order.
 * **GC-friendly**: Minimal allocations in hot paths
 * **Lock-free where possible**: Uses atomic operations for pick decisions
 
-This architecture provides a solid foundation for building complex concurrent coordination patterns while maintaining simplicity and correctness.
+This architecture provides a solid foundation for building complex concurrent
+coordination patterns while maintaining simplicity and correctness.
 
 ---
 

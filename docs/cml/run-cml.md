@@ -1,16 +1,20 @@
 # The RunCML structure
 
-This document is adapted from the SML/NJ CML documentation (`run-cml.mldoc`) for the Crystal CML implementation.
+This document is adapted from the SML/NJ CML documentation (`run-cml.mldoc`) for
+the Crystal CML implementation.
 
 ## Overview
 
-The `RunCML` structure provides support for running CML programs, including initialization, shutdown, and cleanup. In Crystal, these functions are part of the `CML` module itself (not a separate structure).
+The `RunCML` structure provides support for running CML programs, including
+initialization, shutdown, and cleanup. In Crystal, these functions are part of
+the `CML` module itself (not a separate structure).
 
 ## Functions
 
 ### `doit`
 
-**SML signature**: `val doit : ((unit -> unit) * Time.time option) -> OS.Process.status`
+**SML signature**:
+`val doit : ((unit -> unit) * Time.time option) -> OS.Process.status`
 
 **Crystal equivalent**:
 
@@ -18,8 +22,11 @@ The `RunCML` structure provides support for running CML programs, including init
 def self.run(&block : -> Nil) : Nil
 ```
 
-**Description**:
-Runs a CML program. In SML/NJ, `doit` takes a main function and an optional timeout, returning process status. In Crystal, `CML.run` takes a block and executes it within the CML runtime, automatically initializing and shutting down CML. There is no timeout parameter; use `timeout` events for time-limited execution.
+**Description**: Runs a CML program. In SML/NJ, `doit` takes a main function and
+an optional timeout, returning process status. In Crystal, `CML.run` takes a
+block and executes it within the CML runtime, automatically initializing and
+shutting down CML. There is no timeout parameter; use `timeout` events for
+time-limited execution.
 
 **Prototype**:
 
@@ -39,8 +46,9 @@ end
 def self.running? : Bool
 ```
 
-**Description**:
-Returns `true` if CML is currently running (i.e., `CML.run` has been called and not yet terminated). This can be used to check if CML operations are permitted.
+**Description**: Returns `true` if CML is currently running (i.e., `CML.run` has
+been called and not yet terminated). This can be used to check if CML operations
+are permitted.
 
 **Prototype**:
 
@@ -58,8 +66,9 @@ CML.running?
 def self.shutdown : NoReturn
 ```
 
-**Description**:
-Terminates the CML runtime with a non-zero exit status. In Crystal, `shutdown` terminates the program with exit code 1. Note: This function never returns.
+**Description**: Terminates the CML runtime with a non-zero exit status. In
+Crystal, `shutdown` terminates the program with exit code 1. Note: This function
+never returns.
 
 **Prototype**:
 
@@ -69,7 +78,9 @@ CML.shutdown  # terminates program
 
 ## Cleanup System
 
-SML/NJ RunCML includes a comprehensive cleanup registry for channels, mailboxes, and servers. Crystal provides a similar but simplified cleanup system via `CML::Cleanup`.
+SML/NJ RunCML includes a comprehensive cleanup registry for channels, mailboxes,
+and servers. Crystal provides a similar but simplified cleanup system via
+`CML::Cleanup`.
 
 ### Cleanup Timing
 
@@ -110,16 +121,20 @@ module CML::Cleanup
 end
 ```
 
-These functions register resources for automatic cleanup during shutdown. The Crystal cleanup system is thread-safe and integrated with `CML.run`/`CML.shutdown`.
+These functions register resources for automatic cleanup during shutdown. The
+Crystal cleanup system is thread-safe and integrated with
+`CML.run`/`CML.shutdown`.
 
 ## Export Function
 
-**SML signature**: `val exportFn : (string * (string * string list -> OS.Process.status) * Time.time option) -> unit`
+**SML signature**:
+`val exportFn : (string * (string * string list -> OS.Process.status) * Time.time option) -> unit`
 
 **Crystal equivalent**: Not implemented.
 
-**Description**:
-In SML/NJ, `exportFn` creates stand-alone executables from CML programs. This functionality is not relevant to Crystal, as Crystal programs are already compiled to native executables.
+**Description**: In SML/NJ, `exportFn` creates stand-alone executables from CML
+programs. This functionality is not relevant to Crystal, as Crystal programs are
+already compiled to native executables.
 
 ## Example
 
@@ -147,8 +162,10 @@ end
 ## Differences from SML/NJ
 
 1.  **Integrated module**: RunCML functions are part of `CML` module in Crystal
-2.  **Simplified cleanup**: Crystal's cleanup system is simpler but covers common cases
-3.  **No exportFn**: Stand-alone executable creation is handled by Crystal compiler
+2.  **Simplified cleanup**: Crystal's cleanup system is simpler but covers common
+   cases
+3.  **No exportFn**: Stand-alone executable creation is handled by Crystal
+   compiler
 4.  **No timeout parameter**: Use `timeout` events for time-limited execution
 5.  **Fiber-based**: Crystal uses cooperative fibers, not preemptive threads
 

@@ -1,9 +1,11 @@
 # linda_tuple_space_system_from_book_chapter_9_040.cr - Compilation Issue
 
 ## Source File
+
 `/Users/dominic/repos/github.com/dsisnero/cml/examples/how_to/failing/linda_tuple_space_system_from_book_chapter_9_040.cr`
 
 ## Error
+
 ```text
 Showing last frame. Use --error-trace for full trace.
 
@@ -16,6 +18,7 @@ Error: undefined constant InputRequest
 ```
 
 ## Example Content
+
 ```crystal
 # linda_tuple_space_system_from_book_chapter_9_040.cr
 # Extracted from: how_to.md
@@ -34,10 +37,11 @@ proxy_port = req_mch.port
 ```
 
 ## Analysis Needed
-1. Identify the root cause of the compilation error
-2. Determine if it's a:
-   - Syntax issue in the example
-   - Missing dependency or require
-   - Type system limitation
-   - API change needed
-3. Propose a fix
+
+1.  Identify the root cause of the compilation error
+2.  Determine if it's a:
+    *   Syntax issue in the example
+    *   Missing dependency or require
+    *   Type system limitation
+    *   API change needed
+3.  Propose a fix

@@ -1,12 +1,18 @@
 # The OS.IO structure
 
-This document is adapted from the SML/NJ CML documentation (`os-io.mldoc`) for the Crystal CML implementation. The OS.IO structure provides event-based polling of I/O devices, modeled after the Unix poll interface.
+This document is adapted from the SML/NJ CML documentation (`os-io.mldoc`) for
+the Crystal CML implementation. The OS.IO structure provides event-based polling
+of I/O devices, modeled after the Unix poll interface.
 
 ## Overview
 
-In SML/NJ CML, `OS.IO` provides a `pollEvt` function that takes a list of poll descriptors and returns an event that becomes enabled when any of the descriptors are ready for I/O. This allows monitoring multiple file descriptors simultaneously.
+In SML/NJ CML, `OS.IO` provides a `pollEvt` function that takes a list of poll
+descriptors and returns an event that becomes enabled when any of the
+descriptors are ready for I/O. This allows monitoring multiple file descriptors
+simultaneously.
 
-Crystal CML provides similar functionality through the `CML::IOEvents` module and `CML::PrimitiveIO` backend, though the API differs significantly.
+Crystal CML provides similar functionality through the `CML::IOEvents` module
+and `CML::PrimitiveIO` backend, though the API differs significantly.
 
 ## Namespace
 
@@ -19,7 +25,9 @@ Crystal CML provides similar functionality through the `CML::IOEvents` module an
 
 ### Poll Descriptors
 
-SML/NJ uses `poll_desc` values to specify I/O conditions to monitor (readable, writable, exceptional). Crystal uses `IO::FileDescriptor` objects directly with specific event functions.
+SML/NJ uses `poll_desc` values to specify I/O conditions to monitor (readable,
+writable, exceptional). Crystal uses `IO::FileDescriptor` objects directly with
+specific event functions.
 
 ```crystal
 # SML: poll_desc
@@ -29,7 +37,8 @@ fd = STDIN.fd
 
 ### Poll Information
 
-SML/NJ returns `poll_info` values indicating which descriptors are ready. Crystal's events return the ready descriptor or data directly.
+SML/NJ returns `poll_info` values indicating which descriptors are ready.
+Crystal's events return the ready descriptor or data directly.
 
 ```crystal
 # SML: poll_info list
@@ -44,7 +53,8 @@ SML/NJ returns `poll_info` values indicating which descriptors are ready. Crysta
 
 **Crystal equivalents**:
 
-Crystal provides separate events for different I/O operations rather than a generic poll function:
+Crystal provides separate events for different I/O operations rather than a
+generic poll function:
 
 ```crystal
 # Wait for a file descriptor to become readable
@@ -62,7 +72,9 @@ CML.write_evt(io : IO, data : Bytes) : Event(Int32)
 
 **Description**:
 
-Monitors a list of poll descriptors for I/O readiness. The event becomes enabled when any descriptor is ready for the requested operation(s). Raises `OS.SysErr` if a file descriptor is invalid.
+Monitors a list of poll descriptors for I/O readiness. The event becomes enabled
+when any descriptor is ready for the requested operation(s). Raises `OS.SysErr`
+if a file descriptor is invalid.
 
 **Crystal usage**:
 
@@ -82,7 +94,8 @@ ready = CML.sync(choice)  # :socket1 or :socket2
 
 ## Error Handling
 
-SML/NJ raises `OS.SysErr` for invalid file descriptors or system errors. Crystal raises `IO::Error` or `Errno` exceptions for I/O errors.
+SML/NJ raises `OS.SysErr` for invalid file descriptors or system errors. Crystal
+raises `IO::Error` or `Errno` exceptions for I/O errors.
 
 ```crystal
 begin
@@ -96,10 +109,12 @@ end
 
 When porting SML/NJ code that uses `OS.IO.pollEvt`:
 
-1.  **Single descriptor polling**: Replace with `CML::PrimitiveIO.wait_readable_evt` or `wait_writable_evt`
+1.  **Single descriptor polling**: Replace with
+   `CML::PrimitiveIO.wait_readable_evt` or `wait_writable_evt`
 2.  **Multiple descriptor polling**: Use `CML.choose` with individual wait events
 3.  **Read/write operations**: Use `CML.read_evt` or `CML.write_evt` directly
-4.  **Poll descriptors**: Crystal uses `IO::FileDescriptor` objects (obtained via `io.fd`)
+4.  **Poll descriptors**: Crystal uses `IO::FileDescriptor` objects (obtained via
+   `io.fd`)
 
 **Example conversion**:
 
@@ -126,7 +141,8 @@ ready = CML.sync(choice)
 *   [OS Documentation](os.md) - OS structure overview
 *   [CML Documentation](cml.md) - Core CML functions
 *   [Crystal CML Manual](../cml_manual.md) - High-level overview
-*   [SML/NJ OS.IO Documentation](https://www.smlnj.org/doc/) - Original documentation
+*   [SML/NJ OS.IO Documentation](https://www.smlnj.org/doc/) - Original
+  documentation
 
 ---
 

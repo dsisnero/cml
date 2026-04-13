@@ -1,22 +1,16 @@
-# Synchronization primitives compatibility for Crystal 1.19+ execution contexts
+# Synchronization primitives compatibility.
 #
-# For Crystal 1.19.0+, CML requires `-Dpreview_mt -Dexecution_context` flags
-# to enable thread-safe synchronization primitives.
-#
-# For Crystal <1.19.0, uses standard single-threaded fiber-safe primitives.
+# When compiled with `-Dpreview_mt -Dexecution_context`, use Crystal's
+# thread-safe Sync primitives. Otherwise, fall back to fiber-safe primitives.
 
-{% if compare_versions(Crystal::VERSION, "1.19.0") >= 0 %}
-  {% unless flag?(:preview_mt) && flag?(:execution_context) %}
-    {% raise "CML requires `-Dpreview_mt -Dexecution_context` compilation flags for Crystal 1.19.0+\n\nAdd these flags to your crystal command:\n  crystal run -Dpreview_mt -Dexecution_context your_file.cr\n\nOr add to your shards.yml:\n  crystal: 1.19.0\n  flags: [\"-Dpreview_mt\", \"-Dexecution_context\"]\n\nThese flags enable execution contexts and thread-safe Sync primitives." %}
-  {% end %}
+{% if compare_versions(Crystal::VERSION, "1.19.0") >= 0 && flag?(:preview_mt) && flag?(:execution_context) %}
   require "sync/**"
 {% end %}
 
 module CML
   module Sync
-    {% if compare_versions(Crystal::VERSION, "1.19.0") >= 0 %}
-      # Crystal 1.19.0+: Always use thread-safe Sync module primitives
-      # User must compile with `-Dpreview_mt -Dexecution_context` flags
+    {% if compare_versions(Crystal::VERSION, "1.19.0") >= 0 && flag?(:preview_mt) && flag?(:execution_context) %}
+      # Thread-safe primitives when multithreaded execution contexts are enabled.
       alias Mutex = ::Sync::Mutex
       alias ConditionVariable = ::Sync::ConditionVariable
       alias RWLock = ::Sync::RWLock
@@ -36,8 +30,7 @@ module CML
         ConditionVariable.new(lock)
       end
     {% else %}
-      # Crystal <1.19.0: Standard single-threaded fiber cooperative mode
-      # Use regular primitives (safe for fibers within same thread)
+      # Default fallback for builds without execution-context flags.
       class Mutex
         @mutex : ::Mutex
 

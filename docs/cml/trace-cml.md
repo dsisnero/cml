@@ -1,16 +1,24 @@
 # The TraceCML structure
 
-This document is adapted from the SML/NJ CML documentation (`trace-cml.mldoc`) for the Crystal CML implementation. The TraceCML structure provides debugging support through trace output control, thread termination monitoring, and uncaught exception handling.
+This document is adapted from the SML/NJ CML documentation (`trace-cml.mldoc`)
+for the Crystal CML implementation. The TraceCML structure provides debugging
+support through trace output control, thread termination monitoring, and
+uncaught exception handling.
 
 ## Overview
 
 SML/NJ's `TraceCML` provides three main facilities:
 
-1.  **Trace modules** - Hierarchical namespace for controlling debugging output granularity
-2.  **Thread watching** - Detection of thread termination (useful for monitoring servers)
-3.  **Uncaught exception handling** - Custom actions when threads terminate due to uncaught exceptions
+1.  **Trace modules** - Hierarchical namespace for controlling debugging output
+   granularity
+2.  **Thread watching** - Detection of thread termination (useful for monitoring
+   servers)
+3.  **Uncaught exception handling** - Custom actions when threads terminate due
+   to uncaught exceptions
 
-Crystal CML provides a different tracing system based on conditional compilation (`-Dtrace`) and macro-based output. The API is simpler but covers similar use cases.
+Crystal CML provides a different tracing system based on conditional compilation
+(`-Dtrace`) and macro-based output. The API is simpler but covers similar use
+cases.
 
 ## Namespace
 
@@ -25,9 +33,11 @@ Crystal CML provides a different tracing system based on conditional compilation
 
 ### `trace_module`
 
-**SML type**: `trace_module` - Element in hierarchical namespace controlling debugging output.
+**SML type**: `trace_module` - Element in hierarchical namespace controlling
+debugging output.
 
-**Crystal equivalent**: Not a direct type. Use **tags** and **event types** for filtering:
+**Crystal equivalent**: Not a direct type. Use **tags** and **event types** for
+filtering:
 
 ```crystal
 # Trace with tag (can be hierarchical using dot notation)
@@ -80,7 +90,8 @@ Sets the destination for trace output.
 
 **SML signature**: `val traceRoot : trace_module`
 
-**Crystal equivalent**: No direct equivalent. The root of all tracing is always enabled when `-Dtrace` is set.
+**Crystal equivalent**: No direct equivalent. The root of all tracing is always
+enabled when `-Dtrace` is set.
 
 ### `traceModule`
 
@@ -136,7 +147,8 @@ CML::Tracer.set_filter_tags(["cml.chan.send"])
 
 **SML signature**: `val amTracing : trace_module -> bool`
 
-**Crystal equivalent**: No direct equivalent. Check if tracing is enabled globally:
+**Crystal equivalent**: No direct equivalent. Check if tracing is enabled
+globally:
 
 ```crystal
 {% if flag?(:trace) %}
@@ -148,7 +160,8 @@ CML::Tracer.set_filter_tags(["cml.chan.send"])
 
 **SML signature**: `val status : trace_module -> (trace_module * bool) list`
 
-**Crystal equivalent**: No direct equivalent. Filter state can be inspected via `CML::Tracer` class variables.
+**Crystal equivalent**: No direct equivalent. Filter state can be inspected via
+`CML::Tracer` class variables.
 
 ### `trace`
 
@@ -206,7 +219,8 @@ end
 * `val setHandleFn : ((CML.thread_id * exn) -> bool) -> unit`
 *   `val resetUncaughtFn : unit -> unit`
 
-**Crystal equivalents**: Crystal has its own uncaught exception handling via `Fiber#rescue`. CML does not override this.
+**Crystal equivalents**: Crystal has its own uncaught exception handling via
+`Fiber#rescue`. CML does not override this.
 
 ```crystal
 # Crystal's built-in exception handling
@@ -218,7 +232,8 @@ end
 
 ## Thread Termination Monitoring
 
-SML/NJ provides automatic thread termination detection. Crystal requires manual monitoring:
+SML/NJ provides automatic thread termination detection. Crystal requires manual
+monitoring:
 
 ```crystal
 # Monitor a server thread
@@ -228,7 +243,8 @@ watch_thread("server", server_tid)
 
 ## Uncaught Exception Reporting
 
-SML/NJ allows customizing uncaught exception actions. Crystal uses fiber-level rescue blocks:
+SML/NJ allows customizing uncaught exception actions. Crystal uses fiber-level
+rescue blocks:
 
 ```crystal
 CML.spawn do
@@ -255,7 +271,8 @@ crystal build -Dtrace program.cr
 crystal build program.cr
 ```
 
-When disabled, all `CML.trace` calls compile to `nil` with zero runtime overhead.
+When disabled, all `CML.trace` calls compile to `nil` with zero runtime
+overhead.
 
 ## Example Usage
 
@@ -292,7 +309,8 @@ When porting SML/NJ code that uses `TraceCML`:
 *   [CML Library Reference](cml-lib.md) - Library structure containing TraceCML
 *   [Crystal Tracing System](../../src/trace_macro.cr) - Implementation source
 *   [CML Documentation](cml.md) - Core CML functions
-*   [SML/NJ TraceCML Documentation](https://www.smlnj.org/doc/) - Original documentation
+*   [SML/NJ TraceCML Documentation](https://www.smlnj.org/doc/) - Original
+  documentation
 
 ---
 

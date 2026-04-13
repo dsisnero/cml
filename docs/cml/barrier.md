@@ -1,12 +1,18 @@
 # The Barrier structure
 
-This document is adapted from the SML/NJ CML documentation (`barrier.mldoc`) for the Crystal CML implementation.
+This document is adapted from the SML/NJ CML documentation (`barrier.mldoc`) for
+the Crystal CML implementation.
 
 ## Overview
 
-The `Barrier` structure provides support for barrier synchronization with global state. Note that unlike most other synchronization mechanisms in CML, barriers do not have event-value operations in the SML/NJ API (though Crystal provides them as extensions).
+The `Barrier` structure provides support for barrier synchronization with global
+state. Note that unlike most other synchronization mechanisms in CML, barriers
+do not have event-value operations in the SML/NJ API (though Crystal provides
+them as extensions).
 
-In Crystal, barriers are implemented as `CML::Barrier(T)` class with `CML::Barrier::Enrollment(T)` inner class. Crystal provides both the SML/NJ functional barrier and a simpler counting barrier.
+In Crystal, barriers are implemented as `CML::Barrier(T)` class with
+`CML::Barrier::Enrollment(T)` inner class. Crystal provides both the SML/NJ
+functional barrier and a simpler counting barrier.
 
 ## Types
 
@@ -16,8 +22,9 @@ In Crystal, barriers are implemented as `CML::Barrier(T)` class with `CML::Barri
 
 **Crystal**: `class CML::Barrier(T)`
 
-**Description**:
-This is the type constructor for a barrier. A barrier allows multiple threads to synchronize at a common point. When all enrolled threads reach the barrier, they are all released and the global state is updated.
+**Description**: This is the type constructor for a barrier. A barrier allows
+multiple threads to synchronize at a common point. When all enrolled threads
+reach the barrier, they are all released and the global state is updated.
 
 ### `Enrollment(T)`
 
@@ -25,8 +32,10 @@ This is the type constructor for a barrier. A barrier allows multiple threads to
 
 **Crystal**: `class CML::Barrier::Enrollment(T)`
 
-**Description**:
-This type constructor represents an *enrollment* on a barrier. Enrollments are used to synchronize on barriers. The (unenforced) convention is that each enrolled thread belongs to a thread and that a thread owns at most one enrollment on a given barrier.
+**Description**: This type constructor represents an *enrollment* on a barrier.
+Enrollments are used to synchronize on barriers. The (unenforced) convention is
+that each enrolled thread belongs to a thread and that a thread owns at most one
+enrollment on a given barrier.
 
 ## Functions
 
@@ -42,8 +51,9 @@ def self.barrier(update_fn : Proc(T, T), initial_state : T) : Barrier(T)
 def self.barrier(initial_state : T, &block : T -> T) : Barrier(T)
 ```
 
-**Description**:
-Creates a new barrier with the update function `update` and the initial state `init`. The state is updated each time the barrier is synchronized on by the enrolled threads.
+**Description**: Creates a new barrier with the update function `update` and the
+initial state `init`. The state is updated each time the barrier is synchronized
+on by the enrolled threads.
 
 **Prototype**:
 
@@ -65,8 +75,9 @@ barrier = CML.barrier(0) { |x| x + 1 }
 def enroll : Enrollment(T)
 ```
 
-**Description**:
-Enrolls on the barrier, returning a new `enrollment`. The convention is that each enrolled thread belongs to a thread and that a thread owns at most one enrollment on a given barrier.
+**Description**: Enrolls on the barrier, returning a new `enrollment`. The
+convention is that each enrolled thread belongs to a thread and that a thread
+owns at most one enrollment on a given barrier.
 
 **Prototype**:
 
@@ -85,10 +96,13 @@ enrollment = barrier.enroll
 def wait : T
 ```
 
-**Description**:
-Waits on the barrier until all of the enrolled threads are waiting, at which point the state is updated and the resulting state value is returned to the waiting threads. If another thread is already waiting on this enrollment or if the enrollment has been resigned, then an exception is raised.
+**Description**: Waits on the barrier until all of the enrolled threads are
+waiting, at which point the state is updated and the resulting state value is
+returned to the waiting threads. If another thread is already waiting on this
+enrollment or if the enrollment has been resigned, then an exception is raised.
 
-Note that if the update function for the barrier raises an exception, then this exception is raised for each waiting thread by `wait`.
+Note that if the update function for the barrier raises an exception, then this
+exception is raised for each waiting thread by `wait`.
 
 **Prototype**:
 
@@ -107,8 +121,9 @@ state = enrollment.wait
 def resign : Nil
 ```
 
-**Description**:
-Resigns from the enrollment `ebar`. Resigning from an already resigned enrollment is ignored, but if another thread is waiting on this enrollment, then an exception is raised.
+**Description**: Resigns from the enrollment `ebar`. Resigning from an already
+resigned enrollment is ignored, but if another thread is waiting on this
+enrollment, then an exception is raised.
 
 **Prototype**:
 
@@ -127,8 +142,9 @@ enrollment.resign
 def value : T
 ```
 
-**Description**:
-Gets the current value of the barrier's state. Note that if the convention of one-thread per enrollment is followed, then this operation is free of races, since the state is stable between barrier synchronizations.
+**Description**: Gets the current value of the barrier's state. Note that if the
+convention of one-thread per enrollment is followed, then this operation is free
+of races, since the state is stable between barrier synchronizations.
 
 **Prototype**:
 
@@ -144,7 +160,9 @@ current_state = enrollment.value
 def wait_evt : Event(T)
 ```
 
-Returns an event value for waiting on the barrier, allowing barrier synchronization to be used in `choose` expressions. This is a Crystal extension not present in SML/NJ.
+Returns an event value for waiting on the barrier, allowing barrier
+synchronization to be used in `choose` expressions. This is a Crystal extension
+not present in SML/NJ.
 
 ### Status Check Methods
 
@@ -164,7 +182,8 @@ Crystal also provides a simpler counting barrier:
 def self.counting_barrier(count : Int32) : Barrier(Nil)
 ```
 
-Creates a barrier that releases when `count` threads have synchronized. The state is always `nil`.
+Creates a barrier that releases when `count` threads have synchronized. The
+state is always `nil`.
 
 **Example**:
 
@@ -197,7 +216,10 @@ spawn_child(clock)
 parent_enrollment.resign
 ```
 
-In this example, two threads are spawned, which then synchronize on the barrier five times. To avoid a race condition between enrollment and the first synchronization, the parent thread enrolls on the barrier prior to spawning its children and then resigns after the children have been enrolled.
+In this example, two threads are spawned, which then synchronize on the barrier
+five times. To avoid a race condition between enrollment and the first
+synchronization, the parent thread enrolls on the barrier prior to spawning its
+children and then resigns after the children have been enrolled.
 
 ## See Also
 
