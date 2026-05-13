@@ -6,6 +6,12 @@ private def sync_with_timeout(evt : CML::Event(T), timeout = 1.second) : T foral
   result.as(T)
 end
 
+class CML::TupleLib::TupleSpace
+  def self.parse_host_for_spec(host_str : String) : {String, Int32}
+    parse_host(host_str)
+  end
+end
+
 describe "CML::TupleLib" do
   it "supports out and in_evt" do
     CML.set_running(false)
@@ -76,16 +82,10 @@ describe "CML::TupleLib" do
   end
 
   it "accepts bracketed IPv6 remote host syntax without parse errors" do
-    begin
-      CML::TupleLib::TupleSpace.join_tuple_space(
-        remote_hosts: ["[::1]:65000"]
-      )
-      fail "expected remote connection failure"
-    rescue ex : ArgumentError
-      fail "expected host parsing to accept bracketed IPv6: #{ex.message}"
-    rescue ex : ::Socket::Error
-      ex.message.should_not be_nil
-      ex.message.not_nil!.should contain("failed to connect to remote tuple space")
-    end
+    CML::TupleLib::TupleSpace.parse_host_for_spec("[::1]:65000").should eq({"::1", 65_000})
+  end
+
+  it "treats bare IPv6 literals as host-only addresses" do
+    CML::TupleLib::TupleSpace.parse_host_for_spec("2001:db8::1").should eq({"2001:db8::1", 7001})
   end
 end
