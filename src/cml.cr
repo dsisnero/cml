@@ -223,16 +223,25 @@ module CML
   abstract class Event(T)
     # Unique event id for tracing
     property event_id : Int64 = 0_i64
+    @forced_group : EventGroup(T)?
 
     # Poll the event - check if it's immediately ready
     abstract def poll : EventStatus(T)
 
     # Force evaluation of guards, returning an event group
     def force : EventGroup(T)
-      force_impl
+      if memoize_force?
+        @forced_group ||= force_impl
+      else
+        force_impl
+      end
     end
 
     protected abstract def force_impl : EventGroup(T)
+
+    protected def memoize_force? : Bool
+      false
+    end
   end
 
   # -----------------------
@@ -282,7 +291,10 @@ module CML
 
   # An event that always succeeds immediately with a value
   class AlwaysEvent(T) < Event(T)
+    @group : BaseGroup(T)
+
     def initialize(@value : T)
+      @group = BaseGroup(T).new(-> : EventStatus(T) { poll })
     end
 
     def poll : EventStatus(T)
@@ -290,18 +302,32 @@ module CML
     end
 
     protected def force_impl : EventGroup(T)
-      BaseGroup(T).new(-> : EventStatus(T) { poll })
+      @group
+    end
+
+    protected def memoize_force? : Bool
+      true
     end
   end
 
   # An event that never succeeds
   class NeverEvent(T) < Event(T)
+    @group : BaseGroup(T)
+
+    def initialize
+      @group = BaseGroup(T).new(Array(Proc(EventStatus(T))).new)
+    end
+
     def poll : EventStatus(T)
       Blocked(T).new { |_, _| } # Block forever, never resume
     end
 
     protected def force_impl : EventGroup(T)
-      BaseGroup(T).new(Array(Proc(EventStatus(T))).new) # Empty base group
+      @group # Empty base group
+    end
+
+    protected def memoize_force? : Bool
+      true
     end
   end
 
@@ -646,6 +672,10 @@ module CML
       wrap_group(@inner.force)
     end
 
+    protected def memoize_force? : Bool
+      @inner.memoize_force?
+    end
+
     private def wrap_group(group : EventGroup(A)) : EventGroup(B)
       case group
       when BaseGroup(A)
@@ -819,6 +849,10 @@ module CML
         NestedGroup(T).new(result)
       end
     end
+
+    protected def memoize_force? : Bool
+      @events.all? { |event| event.memoize_force? }
+    end
   end
 
   # -----------------------
@@ -855,10 +889,17 @@ module CML
     @duration : Time::Span
     @ready = AtomicFlag.new
     @start_mtx = Sync::Mutex.new
-    @timer_ids = {} of Int64 => UInt64
+    @single_tid_id : Int64?
+    @single_timer_id : UInt64?
+    @extra_timer_ids : Hash(Int64, UInt64)?
+    @group : BaseGroup(Nil)
 
     def initialize(duration : Time::Span)
       @duration = duration
+      @single_tid_id = nil
+      @single_timer_id = nil
+      @extra_timer_ids = nil
+      @group = BaseGroup(Nil).new(-> : EventStatus(Nil) { poll })
     end
 
     def poll : EventStatus(Nil)
@@ -875,13 +916,25 @@ module CML
     end
 
     protected def force_impl : EventGroup(Nil)
-      BaseGroup(Nil).new(-> : EventStatus(Nil) { poll })
+      @group
+    end
+
+    protected def memoize_force? : Bool
+      true
     end
 
     private def start_once(tid : TransactionId)
       CML.trace "TimeoutEvent.start_once", @duration, tid.id, tag: "timeout"
       return if @ready.get
-      should_start = @start_mtx.synchronize { !@timer_ids.has_key?(tid.id) }
+      should_start = @start_mtx.synchronize do
+        if @single_tid_id == tid.id
+          false
+        elsif extra = @extra_timer_ids
+          !extra.has_key?(tid.id)
+        else
+          true
+        end
+      end
 
       return unless should_start
 
@@ -889,16 +942,42 @@ module CML
       timer_id = self.class.timer_wheel.schedule(@duration) do
         deliver(tid)
       end
-      @start_mtx.synchronize { @timer_ids[tid.id] = timer_id }
+      @start_mtx.synchronize do
+        if @single_tid_id.nil?
+          @single_tid_id = tid.id
+          @single_timer_id = timer_id
+        elsif @single_tid_id == tid.id
+          @single_timer_id = timer_id
+        else
+          extra = (@extra_timer_ids ||= Hash(Int64, UInt64).new)
+          extra[tid.id] = timer_id
+        end
+      end
     end
 
     private def cancel_timer(tid_id : Int64)
-      id = @start_mtx.synchronize { @timer_ids.delete(tid_id) }
+      id = @start_mtx.synchronize do
+        if @single_tid_id == tid_id
+          timer_id = @single_timer_id
+          @single_tid_id = nil
+          @single_timer_id = nil
+          timer_id
+        else
+          @extra_timer_ids.try(&.delete(tid_id))
+        end
+      end
       self.class.timer_wheel.cancel(id) if id
     end
 
     private def deliver(tid : TransactionId)
-      @start_mtx.synchronize { @timer_ids.delete(tid.id) }
+      @start_mtx.synchronize do
+        if @single_tid_id == tid.id
+          @single_tid_id = nil
+          @single_timer_id = nil
+        else
+          @extra_timer_ids.try(&.delete(tid.id))
+        end
+      end
       CML.trace "TimeoutEvent.deliver", tid.id, tid.cancelled?, tag: "timeout"
       return if @ready.get
       @ready.set(true) if tid.try_commit_and_resume
