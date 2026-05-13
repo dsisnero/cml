@@ -95,8 +95,13 @@ end
 puts "\n--- Benchmark: Timeout Creation and Cancellation ---"
 Benchmark.ips do |x|
   x.report("schedule+cancel") do
-    pick = CML::Pick(Symbol).new
-    cancel = CML.timeout(1.seconds).try_register(pick)
-    cancel.call
+    case status = CML.timeout(1.seconds).poll
+    when CML::Blocked(Nil)
+      tid = CML::TransactionId.new
+      status.block_fn.call(tid, -> { })
+      tid.try_cancel
+    else
+      raise "expected timeout poll to block before scheduling"
+    end
   end
 end
