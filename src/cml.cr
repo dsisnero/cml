@@ -926,33 +926,32 @@ module CML
     private def start_once(tid : TransactionId)
       CML.trace "TimeoutEvent.start_once", @duration, tid.id, tag: "timeout"
       return if @ready.get
-      should_start = @start_mtx.synchronize do
+      timer_id = @start_mtx.synchronize do
         if @single_tid_id == tid.id
-          false
+          nil
         elsif extra = @extra_timer_ids
-          !extra.has_key?(tid.id)
+          if extra.has_key?(tid.id)
+            nil
+          else
+            CML.trace "TimeoutEvent.schedule", @duration, tag: "timeout"
+            id = self.class.timer_wheel.schedule(@duration) do
+              deliver(tid)
+            end
+            extra[tid.id] = id
+            id
+          end
         else
-          true
-        end
-      end
-
-      return unless should_start
-
-      CML.trace "TimeoutEvent.schedule", @duration, tag: "timeout"
-      timer_id = self.class.timer_wheel.schedule(@duration) do
-        deliver(tid)
-      end
-      @start_mtx.synchronize do
-        if @single_tid_id.nil?
+          CML.trace "TimeoutEvent.schedule", @duration, tag: "timeout"
+          id = self.class.timer_wheel.schedule(@duration) do
+            deliver(tid)
+          end
           @single_tid_id = tid.id
-          @single_timer_id = timer_id
-        elsif @single_tid_id == tid.id
-          @single_timer_id = timer_id
-        else
-          extra = (@extra_timer_ids ||= Hash(Int64, UInt64).new)
-          extra[tid.id] = timer_id
+          @single_timer_id = id
+          id
         end
       end
+
+      return unless timer_id
     end
 
     private def cancel_timer(tid_id : Int64)

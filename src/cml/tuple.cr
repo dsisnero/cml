@@ -945,6 +945,27 @@ module CML
         ts_mb = CML::Mailbox(ClientReq).new
         start_tuple_server(ts_mb)
 
+        if local_port.nil? && remote_hosts.empty?
+          local_proxy_req_mb = CML::Mailbox(ProxyMsg).new
+          local_proxy_reply_mb = CML::Mailbox(Reply).new
+          local_proxy = build_proxy(
+            0,
+            local_proxy_req_mb,
+            -> : Event(Reply) { local_proxy_reply_mb.recv_evt },
+            ->(trans_id : Int32, remove : Bool, pat : Template) {
+              ts_mb.send(ClientInReq.new(0, trans_id, remove, pat, ->(reply : Reply) {
+                local_proxy_reply_mb.send(reply)
+              }))
+            },
+            ->(trans_id : Int32) { ts_mb.send(ClientAccept.new(0, trans_id)) },
+            ->(trans_id : Int32) { ts_mb.send(ClientCancel.new(0, trans_id)) }
+          )
+
+          request = ->(msg : ProxyMsg) { local_proxy.call(msg) }
+          output = ->(tuple : TupleValue) { ts_mb.send(ClientOut.new(tuple)) }
+          return new(request, output)
+        end
+
         proxy_targets = Hash(Int32, Proc(ProxyMsg, Nil)).new
         in_log = Hash(Int64, InMsg).new
         state_mtx = CML::Sync::Mutex.new
@@ -974,7 +995,7 @@ module CML
           -> : Event(Reply) { local_proxy_reply_mb.recv_evt },
           ->(trans_id : Int32, remove : Bool, pat : Template) {
             ts_mb.send(ClientInReq.new(0, trans_id, remove, pat, ->(reply : Reply) {
-              CML.spawn { local_proxy_reply_mb.send(reply) }
+              local_proxy_reply_mb.send(reply)
             }))
           },
           ->(trans_id : Int32) { ts_mb.send(ClientAccept.new(0, trans_id)) },

@@ -36,15 +36,17 @@ module CML
       auto_advance : Bool = true,
       sync_callbacks : Bool = false,
     )
-      @current_time = 0_u64
+      @current_time = CML.monotonic_milliseconds
+      @tick_nanoseconds = @tick_duration.total_nanoseconds
       @wheel_slots = Array(Array(Array(TimerEntry))).new
       @wheel_offsets = Array(UInt64).new
       @wheel_masks = Array(UInt64).new
       @wheel_shifts = Array(Int32).new
+      @wheel_max_ticks = Array(UInt64).new
       @pending_timers = Array(TimerEntry).new
       @ready_callbacks = [] of Proc(Nil)
       @next_id = 0_u64
-      @timer_locations = Hash(UInt64, TimerEntry).new
+      @timer_locations = [] of TimerEntry?
       @mutex = Sync::Mutex.new
       @running = true
       @sync_callbacks = sync_callbacks
@@ -122,15 +124,23 @@ module CML
         @wheel_offsets << (level == 0 ? 0_u64 : 1_u64 << total_shift)
         total_shift += bits
       end
+
+      @wheel_config.each_index do |level|
+        max_ticks_for_level = if level + 1 < @wheel_config.size
+                                1_u64 << @wheel_shifts[level + 1]
+                              else
+                                UInt64::MAX
+                              end
+        @wheel_max_ticks << max_ticks_for_level
+      end
     end
 
     private def add_timer_internal(timeout : Time::Span, interval : Time::Span?, callback : -> Nil) : UInt64
-      @current_time = CML.monotonic_milliseconds if @current_time == 0
-      timeout_ticks = (timeout / @tick_duration).to_i.to_u64
+      timeout_ticks = (timeout.total_nanoseconds // @tick_nanoseconds).to_u64
       raise ArgumentError.new("Timeout must be positive") if timeout_ticks == 0
 
       expiration = @current_time + timeout_ticks
-      interval_ticks = interval ? (interval / @tick_duration).to_i.to_u64 : nil
+      interval_ticks = interval ? (interval.total_nanoseconds // @tick_nanoseconds).to_u64 : nil
 
       timer_id = @next_id
       @next_id += 1
@@ -143,12 +153,12 @@ module CML
       )
 
       add_to_wheel_internal(entry) || @pending_timers << entry
-      @timer_locations[timer_id] = entry
+      set_timer_location(timer_id, entry)
       timer_id
     end
 
     private def cancel_internal(timer_id : UInt64) : Bool
-      if entry = @timer_locations.delete(timer_id)
+      if entry = delete_timer_location(timer_id)
         entry.cancel!
         true
       else
@@ -157,7 +167,7 @@ module CML
     end
 
     private def advance_internal(time : Time::Span)
-      ticks = (time / @tick_duration).to_i.to_u64
+      ticks = (time.total_nanoseconds // @tick_nanoseconds).to_u64
       return if ticks == 0
 
       end_time = @current_time + ticks
@@ -173,6 +183,24 @@ module CML
       @pending_timers.clear
       @ready_callbacks.clear
       @timer_locations.clear
+    end
+
+    private def set_timer_location(timer_id : UInt64, entry : TimerEntry) : Nil
+      index = timer_id.to_i
+      if index == @timer_locations.size
+        @timer_locations << entry
+      else
+        @timer_locations[index] = entry
+      end
+    end
+
+    private def delete_timer_location(timer_id : UInt64) : TimerEntry?
+      index = timer_id.to_i
+      return nil if index >= @timer_locations.size
+      entry = @timer_locations[index]?
+      return nil unless entry
+      @timer_locations[index] = nil
+      entry
     end
 
     private def stats_internal
@@ -192,14 +220,8 @@ module CML
 
       delta = expiration - @current_time
 
-      @wheel_config.each_with_index do |(slots, bits), level|
-        max_ticks_for_level = if level + 1 < @wheel_config.size
-                                1_u64 << @wheel_shifts[level + 1]
-                              else
-                                UInt64::MAX
-                              end
-
-        if delta < max_ticks_for_level
+      @wheel_config.each_index do |level|
+        if delta < @wheel_max_ticks[level]
           shift = @wheel_shifts[level]
           mask = @wheel_masks[level]
           slot_index = ((expiration >> shift) & mask).to_i
@@ -235,20 +257,26 @@ module CML
       slot = @wheel_slots[level][slot_index]
       return if slot.empty?
 
-      expired = Array(TimerEntry).new
-      remaining = Array(TimerEntry).new
+      expired = nil
+      remaining = nil
 
       slot.each do |entry|
         next if entry.cancelled?
 
         if entry.expiration <= @current_time
-          expired << entry
+          (expired ||= Array(TimerEntry).new(slot.size)) << entry
         else
-          remaining << entry
+          (remaining ||= Array(TimerEntry).new(slot.size)) << entry
         end
       end
 
-      @wheel_slots[level][slot_index] = remaining
+      if remaining
+        @wheel_slots[level][slot_index] = remaining
+      else
+        slot.clear
+      end
+
+      return unless expired
 
       expired.each do |entry|
         next if entry.cancelled?
@@ -263,12 +291,12 @@ module CML
             interval: interval
           )
           if add_to_wheel_internal(new_entry)
-            @timer_locations[entry.id] = new_entry
+            set_timer_location(entry.id, new_entry)
           else
             @pending_timers << new_entry
           end
         else
-          @timer_locations.delete(entry.id)
+          delete_timer_location(entry.id)
         end
       end
     end
@@ -277,8 +305,9 @@ module CML
       slot = @wheel_slots[level][slot_index]
       return if slot.empty?
 
+      entries = slot
       @wheel_slots[level][slot_index] = Array(TimerEntry).new
-      slot.each do |entry|
+      entries.each do |entry|
         next if entry.cancelled?
         add_to_wheel_internal(entry) || @pending_timers << entry
       end
@@ -286,11 +315,18 @@ module CML
 
     private def retry_pending_timers_internal
       return if @pending_timers.empty?
-      remaining = Array(TimerEntry).new
+      remaining = nil
       @pending_timers.each do |entry|
-        add_to_wheel_internal(entry) || remaining << entry
+        next if entry.cancelled?
+        unless add_to_wheel_internal(entry)
+          (remaining ||= Array(TimerEntry).new(@pending_timers.size)) << entry
+        end
       end
-      @pending_timers = remaining
+      if remaining
+        @pending_timers = remaining
+      else
+        @pending_timers.clear
+      end
     end
 
     private def next_expiration_time_internal : UInt64?
@@ -322,9 +358,6 @@ module CML
 
     private def process_expired_internal
       now_ms = CML.monotonic_milliseconds
-      if @current_time == 0
-        @current_time = now_ms
-      end
       advance_by = now_ms - @current_time
       advance_internal(advance_by.milliseconds) if advance_by > 0
     end
