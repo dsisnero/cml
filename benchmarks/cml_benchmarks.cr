@@ -46,35 +46,21 @@ Benchmark.ips do |x|
 end
 
 # =================================================================
-# Benchmark 4: Channel Rendezvous (Single Fiber)
+# Benchmark 4: Channel Creation Overhead
 #
-# Measures the cost of a simple send/receive rendezvous.
-# This is not a typical use case (usually done between fibers)
-# but it isolates the cost of channel mechanics.
+# Measures the cost of creating a new channel object.
+# Channels are frequently created for RPC patterns.
 # =================================================================
-puts "\n--- Benchmark: Channel Rendezvous (Single Fiber) ---"
+puts "\n--- Benchmark: Channel Creation ---"
 Benchmark.ips do |x|
-  ch = CML::Chan(Int32).new
-  send_evt = ch.send_evt(42)
-  recv_evt = ch.recv_evt
-
-  x.report("rendezvous") do
-    # In a single fiber, we need to use a guard to defer one of the ops.
-    # We also wrap the events to have a common return type for `choose`.
-    choice = CML.choose([
-      CML.wrap(send_evt) { |_| :sent },
-      CML.guard { CML.wrap(recv_evt) { |_| :received } },
-    ])
-    CML.sync(choice)
-  end
+  x.report("Chan.new") { CML::Chan(Int32).new }
 end
 
 # =================================================================
-# Benchmark 5: Channel Rendezvous (Two Fibers)
+# Benchmark 5: Channel Rendezvous (Two Fibers, pre-created channel)
 #
-# The most common channel use case: passing a value from one
-# fiber to another. This measures the full cost of a synchronized
-# handoff, including fiber scheduling.
+# Measures the cost of passing a value from one fiber to another
+# via an already-created channel. This is the most common pattern.
 # =================================================================
 puts "\n--- Benchmark: Channel Rendezvous (Two Fibers) ---"
 Benchmark.ips do |x|

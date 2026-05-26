@@ -320,21 +320,44 @@ a keep/discard decision. Negative results are preserved to prevent retries.
 - **Result**: captured, stored in `perf/baseline-20260525-213346/`
 - **Decision**: N/A (baseline)
 
+### EXP-002: One-Shot Channel (OnceChan) — DISCARDED (2026-05-25)
+- **Hypothesis**: Eliminating Deque queues would reduce RPC round-trip latency
+- **Benchmark**: `benchmarks/once_chan_bench.cr` — 50K iterations, release mode
+- **Results**:
+  - Chan RPC: 3,830 ns/op, OnceChan RPC: 4,217 ns/op
+  - Chan IPC: 4,094 ns/op, OnceChan IPC: 4,234 ns/op
+  - Speedup: **0.91x (9% slower)**
+- **Root cause**: RPC overhead is dominated by fiber spawn/schedule (~2-5us)
+  and TransactionId allocation, not by Deque queue operations. The property
+  getter/setter overhead on OnceChan added ~200ns.
+- **Decision**: DISCARD. Channel queue structure is not the bottleneck.
+  Single-entry Deque push/shift is already ~O(1).
+
 ---
 
-## Priority Order (updated from baseline data)
+## Priority Order (updated from EXP-002 learnings)
 
-| Priority | Item | Hot Path Targeted | Impact | Effort | Risk |
-|----------|------|-------------------|--------|--------|------|
-| 1 | A1 One-Shot Channel | `sync` → 40ns (skip queues) | High | Low | Low |
-| 2 | A2 Point-to-Point Channel | `rendezvous` → 5.2us (CAS instead of Deque) | High | Medium | Low |
-| 3 | D1 Fix broken benchmarks | Make measurement path reliable | High | Low | None |
-| 4 | A3 Choice-Free Fast Path | `choose(always, never)` → 68ns (skip nack collect) | Medium | Low | Low |
-| 5 | B3 Slot Pooling | `RecvEvt` creation → 240B alloc (reuse slots) | Medium | Low | Low |
-| 6 | B1 Lock-Free TransactionId | `sync` → 40ns (−mutex overhead) | Medium | Medium | Medium |
-| 7 | B5 Priority-Selection Index | `choose` with N branches → O(log n) | Medium | Medium | Low |
-| 8 | B2 Poll-First Fast Path | `sync_on_base_events` iteration | Low | Medium | Low |
-| 9 | B4 Timer Wheel Batching | `timeout schedule+cancel` → 1.7us | Low | High | Medium |
+**Key finding**: Channel queue structure is NOT the bottleneck. At 3-5us per
+rendezvous, the cost is dominated by fiber scheduling (~3us) + TransactionId
+allocation. Deque push/shift is ~100ns in the noise.
+
+Revised priorities based on measured data:
+
+| Priority | Item | Target | Est. Win | Effort |
+|----------|------|--------|----------|--------|
+| 1 | ~~A1 One-Shot~~ | ~~sync~~ | ~~DISCARDED~~ | — |
+| 2 | ~~A2 Point-to-Point~~ | ~~rendezvous~~ | ~~Likely noise (same root cause)~~ | — |
+| 3 | B1 Lock-Free TransactionId | `sync` base cost (40ns) | 10-20ns | Medium |
+| 4 | B4 Timer Wheel Batching | `timeout sched+cancel` (1,756ns) | 200-500ns | Medium |
+| 5 | B3 Slot/AtomicFlag Pooling | `RecvEvt` creation (240B) | Reduce GC | Medium |
+| 6 | A3 Choice-Free Fast Path | `choose(always, never)` (45ns) | ~5ns | Low |
+
+**Canceled**: A1 (One-Shot), A2 (Point-to-Point), A4 (Fan-Out/Fan-In) —
+channel topology optimizations are noise-level improvements when fiber
+scheduling dominates at 3-5us per operation.
+
+**New focus**: Optimize the sync path itself — TransactionId allocation,
+mutex contention in sync_on_base_events, timer wheel overhead.
 
 ---
 
