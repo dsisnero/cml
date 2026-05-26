@@ -2,8 +2,7 @@
 # Benchmark comparing MVar implementations
 
 require "../src/cml"
-require "../src/mvar"
-require "../src/mvar_optimized"
+require "../src/cml/mvar"
 
 # Benchmark helper
 def benchmark(name : String, iterations : Int32, &block)

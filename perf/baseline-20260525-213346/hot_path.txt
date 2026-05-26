@@ -1,0 +1,16 @@
+--- Hot Path Benchmark: sync(always) ---
+sync(always): 39.59 ns/op, 25260844.75 ops/s
+
+--- Hot Path Benchmark: choose(always, never) ---
+choose(always, never): 67.57 ns/op, 14799987.42 ops/s
+
+--- Hot Path Benchmark: choose(always, timeout) ---
+choose(always, timeout): 885.28 ns/op, 1129588.67 ops/s
+
+--- Hot Path Benchmark: channel rendezvous two fibers ---
+channel rendezvous two fibers: 5250.5 ns/op, 190458.2 ops/s
+
+--- Hot Path Benchmark: timeout schedule+cancel ---
+timeout schedule+cancel: 1755.93 ns/op, 569500.19 ops/s
+
+--- Hot Path Benchmark: local tuple out/in round trip ---
