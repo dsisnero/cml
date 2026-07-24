@@ -1,5 +1,6 @@
 # /docs/
 /lib/
+/temp/
 /bin/
 /.shards/
 *.dwarf
@@ -21,3 +22,6 @@
 
 # Local Crystal cache (sandbox build artifacts)
 .crystal-cache/
+
+# macOS AppleDouble sidecar files
+._*
