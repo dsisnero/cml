@@ -34,7 +34,7 @@ module CML
     end
 
     def set? : Bool
-      @state.is_a?(Set)
+      @mtx.synchronize { @state.is_a?(Set) }
     end
 
     # Set the cvar, waking all waiters
@@ -70,13 +70,18 @@ module CML
           Enabled(Nil).new(priority: -1, value: nil)
         else
           Blocked(Nil).new do |tid, next_fn|
-            case s = @state
-            when Unset
-              s.waiters << tid
-              next_fn.call
-            when Set
-              tid.resume_fiber
+            # Registration occurs after the first poll releases the lock.
+            # Re-check under the CVar mutex so set!/registration cannot miss
+            # each other in a parallel execution context.
+            @mtx.synchronize do
+              case s = @state
+              when Unset
+                s.waiters << tid if tid.active?
+              when Set
+                tid.try_commit_and_resume if tid.active?
+              end
             end
+            next_fn.call
           end
         end
       end

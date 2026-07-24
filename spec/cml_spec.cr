@@ -1,5 +1,17 @@
 require "./spec_helper.cr"
 
+class CML::Thread::Prop(T)
+  def __fiber_count_for_tests : Int32
+    @mtx.synchronize { @values.size }
+  end
+end
+
+class CML::Thread::Flag
+  def __fiber_count_for_tests : Int32
+    @mtx.synchronize { @values.size }
+  end
+end
+
 describe CML do
   describe "always" do
     it "returns the value immediately" do
@@ -544,6 +556,18 @@ describe CML do
       mv.m_get.should eq(2)
     end
 
+    it "installs a waiting swap's replacement after a put" do
+      mv = CML::MVar(Int32).new
+      result = Channel(Int32).new(1)
+
+      spawn { result.send(mv.m_swap(2)) }
+      Fiber.yield
+      mv.m_put(1)
+
+      result.receive.should eq(1)
+      mv.m_get.should eq(2)
+    end
+
     it "supports initialization with value" do
       mv = CML::MVar(Int32).new(42)
       mv.m_take.should eq(42)
@@ -570,18 +594,16 @@ describe CML do
       cvar.set?.should be_true
     end
 
-    # This test is incomplete - skipping for now
-    pending "can wait for set" do
+    it "can wait for set" do
       cvar = CML::CVar.new
+      cvar.set?.should be_false
 
-      spawn do
-        sleep 10.milliseconds
+      CML.spawn do
+        CML.sleep(10.milliseconds)
         cvar.set!
       end
 
-      # Wait on the cvar using the poll mechanism
-      # This is a simplified test
-      sleep 20.milliseconds
+      CML.sync(CML::CVar::Event.new(cvar))
       cvar.set?.should be_true
     end
   end
@@ -845,18 +867,58 @@ describe CML do
     end
 
     it "isolates values between threads" do
-      prop = CML.new_thread_prop(Int32) { 0 }
-      prop.set(1)
+      CML.set_running(false)
+      begin
+        CML.run do
+          prop = CML.new_thread_prop(Int32) { 0 }
+          prop.set(1)
 
-      other_value : Int32? = nil
-      spawn do
-        other_value = prop.get
-        prop.set(2)
+          other_value = CML::Result(Int32).new
+          tid = CML.spawn do
+            other_value.put(prop.get)
+            prop.set(2)
+          end
+
+          CML.sync(CML.join_evt(tid))
+          prop.get.should eq(1)        # Main fiber's value unchanged
+          other_value.get.should eq(0) # Other fiber got fresh init
+        end
+      ensure
+        CML.set_running(true)
       end
+    end
+
+    it "cleans up CML-managed thread entries on exit" do
+      CML.set_running(false)
+      begin
+        CML.run do
+          prop = CML.new_thread_prop(String) { "init" }
+          tid = CML.spawn do
+            prop.set("worker")
+          end
+
+          CML.sync(CML.join_evt(tid))
+          prop.__fiber_count_for_tests.should eq(0)
+        end
+      ensure
+        CML.set_running(true)
+      end
+    end
+
+    it "prunes dead raw fiber entries on subsequent access" do
+      prop = CML.new_thread_prop(String) { "main" }
+      done = Channel(Nil).new
+
+      spawn do
+        prop.set("worker")
+        done.send(nil)
+      end
+
+      done.receive
       Fiber.yield
 
-      prop.get.should eq(1)    # Main fiber's value unchanged
-      other_value.should eq(0) # Other fiber got fresh init
+      prop.peek.should be_nil
+      prop.__fiber_count_for_tests.should eq(0)
     end
   end
 
@@ -867,20 +929,62 @@ describe CML do
       flag.get.should be_false # Defaults to false
       flag.set(true)
       flag.get.should be_true
+      flag.clear
+      flag.get.should be_false
     end
 
     it "isolates values between threads" do
-      flag = CML.new_thread_flag
-      flag.set(true)
+      CML.set_running(false)
+      begin
+        CML.run do
+          flag = CML.new_thread_flag
+          flag.set(true)
 
-      other_value : Bool? = nil
-      spawn do
-        other_value = flag.get
+          other_value = CML::Result(Bool).new
+          tid = CML.spawn do
+            other_value.put(flag.get)
+          end
+
+          CML.sync(CML.join_evt(tid))
+          flag.get.should be_true
+          other_value.get.should be_false # Other fiber has its own value
+        end
+      ensure
+        CML.set_running(true)
       end
+    end
+
+    it "cleans up CML-managed thread entries on exit" do
+      CML.set_running(false)
+      begin
+        CML.run do
+          flag = CML.new_thread_flag
+          tid = CML.spawn do
+            flag.set(true)
+          end
+
+          CML.sync(CML.join_evt(tid))
+          flag.__fiber_count_for_tests.should eq(0)
+        end
+      ensure
+        CML.set_running(true)
+      end
+    end
+
+    it "prunes dead raw fiber entries on subsequent access" do
+      flag = CML.new_thread_flag
+      done = Channel(Nil).new
+
+      spawn do
+        flag.set(true)
+        done.send(nil)
+      end
+
+      done.receive
       Fiber.yield
 
-      flag.get.should be_true
-      other_value.should be_false # Other fiber has its own value
+      flag.get.should be_false
+      flag.__fiber_count_for_tests.should eq(0)
     end
   end
 
@@ -935,6 +1039,23 @@ describe CML do
       # Both should get the updated state (incremented by 1)
       result1.should eq(1)
       result2.should eq(1)
+    end
+
+    it "resets every enrollment after a completed generation" do
+      barrier = CML.counting_barrier(0)
+      e1 = barrier.enroll
+      e2 = barrier.enroll
+      results = Channel(Int32).new(2)
+
+      spawn { results.send(e1.wait) }
+      results.send(e2.wait)
+      results.receive.should eq(1)
+      results.receive.should eq(1)
+
+      spawn { results.send(e1.wait) }
+      results.send(e2.wait)
+      results.receive.should eq(2)
+      results.receive.should eq(2)
     end
 
     it "allows enrollment queries" do

@@ -61,6 +61,8 @@ module CML
     @@custodian_mtx = CML::Sync::Mutex.new
     @@root_custodian = Custodian.new(nil)
     @@fiber_to_custodian = {} of Fiber => Custodian
+    @@fiber_local_cleaners = [] of Fiber -> Nil
+    @@fiber_local_cleaners_mtx = CML::Sync::Mutex.new
 
     def self.root_custodian : Custodian
       @@root_custodian
@@ -83,6 +85,19 @@ module CML
       @@custodian_mtx.synchronize do
         @@fiber_to_custodian.delete(fiber)
       end
+    end
+
+    protected def self.register_fiber_local_cleaner(&block : Fiber -> Nil) : Nil
+      @@fiber_local_cleaners_mtx.synchronize do
+        @@fiber_local_cleaners << block
+      end
+    end
+
+    protected def self.cleanup_fiber_locals(fiber : Fiber) : Nil
+      cleaners = @@fiber_local_cleaners_mtx.synchronize do
+        @@fiber_local_cleaners.dup
+      end
+      cleaners.each(&.call(fiber))
     end
 
     def self.with_custodian(custodian : Custodian, &block : -> T) : T forall T
@@ -146,6 +161,7 @@ module CML
         @exit_cvar.set!
         controllers = @controller_mtx.synchronize { @controllers.to_a }
         controllers.each(&.remove_thread(self))
+        Thread.cleanup_fiber_locals(@fiber)
         Thread.clear_fiber_custodian(@fiber)
         @@tid_mtx.synchronize do
           @@fiber_to_tid.delete(@fiber)
@@ -323,75 +339,115 @@ module CML
       end
     end
 
-    # Thread property - thread-local storage with lazy initialization
+    # Thread property - thread-local storage with lazy initialization.
     class Prop(T)
-      @values = {} of UInt64 => T
+      @values = {} of Fiber => T
       @init_fn : -> T
       @mtx = CML::Sync::Mutex.new
 
       def initialize(&@init_fn : -> T)
+        Thread.register_fiber_local_cleaner do |fiber|
+          remove_fiber(fiber)
+        end
       end
 
-      private def fiber_key : UInt64
-        Fiber.current.object_id
+      private def current_fiber : Fiber
+        Fiber.current
+      end
+
+      private def prune_dead_fibers : Nil
+        @values.reject! { |fiber, _| fiber.dead? }
+      end
+
+      protected def remove_fiber(fiber : Fiber) : Nil
+        @mtx.synchronize do
+          @values.delete(fiber)
+        end
       end
 
       def clear
-        key = fiber_key
+        fiber = current_fiber
         @mtx.synchronize do
-          @values.delete(key)
+          prune_dead_fibers
+          @values.delete(fiber)
         end
       end
 
       def get : T
-        key = fiber_key
+        fiber = current_fiber
         @mtx.synchronize do
-          @values[key]? || begin
+          prune_dead_fibers
+          @values[fiber]? || begin
             val = @init_fn.call
-            @values[key] = val
+            @values[fiber] = val
             val
           end
         end
       end
 
       def peek : T?
-        key = fiber_key
+        fiber = current_fiber
         @mtx.synchronize do
-          @values[key]?
+          prune_dead_fibers
+          @values[fiber]?
         end
       end
 
       def set(value : T)
-        key = fiber_key
+        fiber = current_fiber
         @mtx.synchronize do
-          @values[key] = value
+          prune_dead_fibers
+          @values[fiber] = value
         end
       end
     end
 
-    # Thread flag - simple boolean thread-local storage
+    # Thread flag - simple boolean thread-local storage.
     class Flag
-      @values = {} of UInt64 => Bool
+      @values = {} of Fiber => Bool
       @mtx = CML::Sync::Mutex.new
 
       def initialize
+        Thread.register_fiber_local_cleaner do |fiber|
+          remove_fiber(fiber)
+        end
       end
 
-      private def fiber_key : UInt64
-        Fiber.current.object_id
+      private def current_fiber : Fiber
+        Fiber.current
+      end
+
+      private def prune_dead_fibers : Nil
+        @values.reject! { |fiber, _| fiber.dead? }
+      end
+
+      protected def remove_fiber(fiber : Fiber) : Nil
+        @mtx.synchronize do
+          @values.delete(fiber)
+        end
       end
 
       def get : Bool
-        key = fiber_key
+        fiber = current_fiber
         @mtx.synchronize do
-          @values[key]? || false
+          prune_dead_fibers
+          @values[fiber]? || false
         end
       end
 
       def set(value : Bool)
-        key = fiber_key
+        fiber = current_fiber
         @mtx.synchronize do
-          @values[key] = value
+          prune_dead_fibers
+          @values[fiber] = value
+        end
+      end
+
+      def clear : Nil
+        fiber = current_fiber
+        @mtx.synchronize do
+          prune_dead_fibers
+          @values.delete(fiber)
         end
       end
     end

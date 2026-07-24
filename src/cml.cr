@@ -410,6 +410,7 @@ module CML
   # Based on SML/NJ's Running.isRunning flag.
   # Starts true for backward compatibility (CML available without explicit run).
   @@is_running : AtomicFlag = AtomicFlag.new.tap(&.set(true))
+  @@run_scope_active : AtomicFlag = AtomicFlag.new
 
   # -----------------------
   # Kill-Safe Registry
@@ -436,7 +437,10 @@ module CML
     # recv_slot holds the received value, recv_done signals completion
     @recv_q = Deque({Slot(T), AtomicFlag, TransactionId}).new
 
-    @mtx = Sync::Mutex.new
+    # Registration can race a matching operation in a parallel execution
+    # context. The reentrant form also lets an already-cancelled transaction
+    # run its queue-removal cleanup while the admission path owns this lock.
+    @mtx = Sync::Mutex.new(:reentrant)
 
     def close
       @closed.set(true)
@@ -550,8 +554,33 @@ module CML
 
           # No receiver - need to block (or already blocked)
           Blocked(Nil).new do |tid, next_fn|
-            chan.@send_q << {value, send_done, tid}
-            tid.set_cleanup -> { chan.remove_send(tid.id) }
+            # `EventStatus::Blocked` is consumed after the polling lock has
+            # been released. Re-check and register atomically so a concurrent
+            # receiver cannot pass between the poll and queue admission.
+            chan.@mtx.synchronize do
+              if tid.active? && !send_done.get
+                matched = false
+                loop do
+                  queued_entry = chan.@recv_q.shift?
+                  break unless queued_entry
+                  recv_slot, recv_done, recv_tid = queued_entry.not_nil!
+                  next unless recv_tid.active?
+
+                  recv_slot.set(value)
+                  recv_done.set(true)
+                  send_done.set(true)
+                  recv_tid.resume_fiber
+                  tid.try_commit_and_resume
+                  matched = true
+                  break
+                end
+
+                unless matched
+                  chan.@send_q << {value, send_done, tid}
+                  tid.set_cleanup -> { chan.remove_send(tid.id) }
+                end
+              end
+            end
             next_fn.call
           end
         end
@@ -590,8 +619,32 @@ module CML
 
           # No sender - need to block (or already blocked)
           Blocked(T).new do |tid, next_fn|
-            chan.@recv_q << {recv_slot, recv_done, tid}
-            tid.set_cleanup -> { chan.remove_recv(tid.id) }
+            # See the send-side admission path: this must run under the
+            # channel lock because the callback executes after `poll` returns.
+            chan.@mtx.synchronize do
+              if tid.active? && !recv_done.get
+                matched = false
+                loop do
+                  queued_entry = chan.@send_q.shift?
+                  break unless queued_entry
+                  value, send_done, send_tid = queued_entry.not_nil!
+                  next unless send_tid.active?
+
+                  recv_slot.set(value)
+                  recv_done.set(true)
+                  send_done.set(true)
+                  send_tid.resume_fiber
+                  tid.try_commit_and_resume
+                  matched = true
+                  break
+                end
+
+                unless matched
+                  chan.@recv_q << {recv_slot, recv_done, tid}
+                  tid.set_cleanup -> { chan.remove_recv(tid.id) }
+                end
+              end
+            end
             next_fn.call
           end
         end
@@ -826,19 +879,45 @@ module CML
     end
 
     protected def force_impl : EventGroup(T)
+      # Fast path: when all sub-events produce BaseGroups (no nacks, no nesting),
+      # merge their proc arrays into a single BaseGroup.  This lets sync_on_group
+      # route through sync_on_base_events, skipping the NestedGroup → collect_events
+      # round-trip and the per-event AtomicFlag allocations.
+      all_base = true
+      merged_procs = [] of Proc(EventStatus(T))
       result = Array(EventGroup(T)).new
+
       @events.each do |event|
-        # Cast to EventGroup(T) to collapse differing concrete child group types.
         g = event.force.as(EventGroup(T))
         case g
         when BaseGroup(T)
-          result << g unless g.empty?
+          if all_base
+            merged_procs.concat(g.events)
+          else
+            result << g unless g.empty?
+          end
         when NestedGroup(T)
+          # Preserve base branches accumulated for the flat fast path before
+          # switching to the general nested representation.
+          unless merged_procs.empty?
+            result << BaseGroup(T).new(merged_procs)
+            merged_procs = [] of Proc(EventStatus(T))
+          end
+          all_base = false
           result.concat(g.groups)
         else
+          # A nack group likewise requires the general representation; do not
+          # discard any preceding base branches while changing representations.
+          unless merged_procs.empty?
+            result << BaseGroup(T).new(merged_procs)
+            merged_procs = [] of Proc(EventStatus(T))
+          end
+          all_base = false
           result << g
         end
       end
+
+      return BaseGroup(T).new(merged_procs) if all_base
 
       case result.size
       when 0
@@ -886,6 +965,9 @@ module CML
   # Timeout Event
   # -----------------------
   class TimeoutEvent < Event(Nil)
+    @@timer_wheel : TimerWheel?
+    @@timer_wheel_mtx = Sync::Mutex.new
+
     @duration : Time::Span
     @ready = AtomicFlag.new
     @start_mtx = Sync::Mutex.new
@@ -983,7 +1065,9 @@ module CML
     end
 
     def self.timer_wheel
-      @@timer_wheel ||= TimerWheel.new
+      @@timer_wheel_mtx.synchronize do
+        @@timer_wheel ||= TimerWheel.new
+      end
     end
   end
 
@@ -1299,16 +1383,18 @@ module CML
   # Run CML with initial procedure (similar to SML/NJ RunCML.doit)
   # Sets running flag, calls cleanup AtInit, runs block, ensures cleanup AtShutdown
   def self.run(&block : -> Nil) : Nil
-    if running?
+    unless @@run_scope_active.compare_and_set(false, true)
       raise "CML is already running"
     end
-    set_running(true)
-    Cleanup.clean_all(Cleanup::When::AtInit)
+    previous_running = running?
     begin
+      set_running(true)
+      Cleanup.clean_all(Cleanup::When::AtInit)
       block.call
     ensure
       Cleanup.clean_all(Cleanup::When::AtShutdown)
-      set_running(false)
+      set_running(previous_running)
+      @@run_scope_active.set(false)
     end
   end
 
@@ -1607,6 +1693,11 @@ module CML
   private def self.spawn_native(*, same_thread : Bool, &block : -> Nil) : Fiber
     return ::spawn { block.call } unless same_thread
 
+    {% if compare_versions(Crystal::VERSION, "1.21.0") >= 0 %}
+      # Execution contexts do not support thread pinning; fibers may move
+      # between OS threads after a yield or blocking call.
+      ::spawn { block.call }
+    {% else %}
     begin
       ::spawn(same_thread: true) { block.call }
     rescue ex : RuntimeError
@@ -1618,6 +1709,7 @@ module CML
         raise ex
       end
     end
+    {% end %}
   end
 
   # Create a new sub-custodian under the current custodian

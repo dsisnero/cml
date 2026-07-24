@@ -171,7 +171,7 @@ describe CML::PrimitiveIO do
     writer.try &.close
   end
 
-  {% if flag?(:preview_mt) && flag?(:execution_context) %}
+  {% if compare_versions(Crystal::VERSION, "1.21.0") >= 0 || (flag?(:preview_mt) && flag?(:execution_context)) %}
     describe "execution context detection" do
       it "selects appropriate backend for context" do
         # Reset backend cache to force re-selection
@@ -187,8 +187,7 @@ describe CML::PrimitiveIO do
         # This test just ensures the mechanism works in default context.
       end
 
-      it "detects parallel context with flag" do
-        # This test requires -Dpreview_mt -Dexecution_context
+      it "detects parallel context" do
         # The in_parallel_context? method is private, but we can test
         # indirectly by checking backend selection after resetting cache.
         # However, we cannot call private methods.

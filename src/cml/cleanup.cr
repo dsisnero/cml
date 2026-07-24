@@ -44,13 +44,9 @@ module CML
     @@server_items = [] of Item
     @@mutex = Sync::Mutex.new(:reentrant)
 
-    # Protect a block with mutex if CML is running
+    # Protect shared cleanup state with a single mutex.
     private def self.protect(&block : -> T) : T forall T
-      if CML.running?
-        @@mutex.synchronize do
-          block.call
-        end
-      else
+      @@mutex.synchronize do
         block.call
       end
     end
@@ -79,21 +75,18 @@ module CML
 
     # Run cleaners for a specific When
     def self.clean(time : When) : Nil
-      protect do
+      hooks = protect do
         filtered = @@hooks.select(&.whens.includes?(time))
-        # reverse order for initialization times
-        list = case time
-               when When::AtInit, When::AtInitFn
-                 filtered.reverse
-               else
-                 filtered
-               end
-        list.each do |hook|
-          # run cleaner in a spawn with timeout? (as in SML)
-          spawn do
-            hook.cleaner.call(time)
-          end
+        case time
+        when When::AtInit, When::AtInitFn
+          filtered.reverse
+        else
+          filtered
         end
+      end
+
+      hooks.each do |hook|
+        hook.cleaner.call(time)
       end
     end
 
@@ -177,21 +170,24 @@ module CML
 
     # Initialize all logged servers (call init procs)
     private def self.start_servers : Nil
-      @@server_items.reverse_each do |item|
+      items = protect { @@server_items.dup }
+      items.reverse_each do |item|
         item.init.call
       end
     end
 
     # Shutdown all logged servers (call shut procs)
     private def self.shutdown_servers : Nil
-      @@server_items.each do |item|
+      items = protect { @@server_items.dup }
+      items.each do |item|
         item.shut.call
       end
     end
 
     # Clean channels and mailboxes (call init procs)
     private def self.clean_channels : Nil
-      (@@chan_items + @@mbox_items).reverse_each do |item|
+      items = protect { @@chan_items.dup + @@mbox_items.dup }
+      items.reverse_each do |item|
         item.init.call
       end
     end
@@ -275,14 +271,6 @@ module CML
     # Clean all registered items for a given When (call this at appropriate times)
     def self.clean_all(time : When) : Nil
       clean(time)
-      case time
-      when When::AtInit, When::AtInitFn
-        clean_channels
-        start_servers
-      when When::AtShutdown, When::AtExit
-        clean_channels
-        shutdown_servers
-      end
     end
 
     # Convenience: clean at program exit

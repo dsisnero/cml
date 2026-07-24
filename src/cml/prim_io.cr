@@ -8,7 +8,7 @@
 
 require "./sync"
 require "crystal/event_loop"
-{% if flag?(:preview_mt) && flag?(:execution_context) %}
+{% if compare_versions(Crystal::VERSION, "1.21.0") >= 0 || (flag?(:preview_mt) && flag?(:execution_context)) %}
   require "fiber/execution_context"
 {% end %}
 
@@ -830,11 +830,6 @@ module CML
 
     # Get the EventLoopBackend singleton (thread-safe initialization)
     private def self.event_loop_backend : EventLoopBackend
-      # Double-checked locking for thread-safe lazy initialization
-      if backend = @@event_loop_backend
-        return backend
-      end
-
       @@backend_init_mtx.synchronize do
         @@event_loop_backend ||= EventLoopBackend.new
       end
@@ -842,11 +837,6 @@ module CML
 
     # Get the IOEventedBackend singleton (thread-safe initialization)
     private def self.io_evented_backend : IOEventedBackend
-      # Double-checked locking for thread-safe lazy initialization
-      if backend = @@io_evented_backend
-        return backend
-      end
-
       @@backend_init_mtx.synchronize do
         @@io_evented_backend ||= IOEventedBackend.new
       end
@@ -866,7 +856,7 @@ module CML
 
     # Check if current execution context is Parallel (multi-threaded)
     private def self.in_parallel_context? : Bool
-      {% if flag?(:preview_mt) && flag?(:execution_context) %}
+      {% if compare_versions(Crystal::VERSION, "1.21.0") >= 0 || (flag?(:preview_mt) && flag?(:execution_context)) %}
         context = Fiber::ExecutionContext.current
         context.is_a?(Fiber::ExecutionContext::Parallel)
       {% else %}

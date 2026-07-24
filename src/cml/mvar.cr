@@ -1,11 +1,19 @@
 module CML
   # Mutable synchronization variable (SML/NJ compatible)
   class MVar(T)
+    private enum WaitKind
+      Take
+      Get
+      Swap
+    end
+
     @value : T?
     @has_value = false
-    @readers = Deque({Slot(T), AtomicFlag, TransactionId, Bool}).new # Bool = is_take?
+    # A waiting swap must retain its replacement value; representing it as a
+    # take loses that value when an empty MVar is later filled.
+    @readers = Deque({Slot(T), AtomicFlag, TransactionId, WaitKind, T?}).new
     @priority = 0
-    @mtx = CML::Sync::Mutex.new
+    @mtx = CML::Sync::Mutex.new(:reentrant)
 
     # Events are nested to avoid polluting the CML namespace.
     class TakeEvent(U) < Event(U)
@@ -69,48 +77,20 @@ module CML
     # Put a value (raises if already full)
     # SML: val mPut : ('a mvar * 'a) -> unit
     def m_put(value : T) : Nil
-      reader_to_notify : {Slot(T), AtomicFlag, TransactionId, Bool}? = nil
+      readers_to_notify = [] of {Slot(T), AtomicFlag, TransactionId, WaitKind, T?}
 
       @mtx.synchronize do
         if @has_value
           raise PutError.new
         end
 
-        # Check for waiting reader
-        while entry = @readers.shift?
-          recv_slot, recv_done, recv_tid, is_take = entry
-          next if recv_tid.cancelled?
-
-          recv_slot.set(value)
-          recv_done.set(true)
-          reader_to_notify = entry
-
-          # For take, the value is consumed
-          # For get, we set the value and let other readers see it
-          unless is_take
-            @value = value
-            @has_value = true
-            @priority = 1
-          end
-          break
-        end
-
-        # If no reader found, store the value
-        unless reader_to_notify
-          @value = value
-          @has_value = true
-        end
+        @value = value
+        @has_value = true
+        @priority = 1
+        readers_to_notify = satisfy_waiters
       end
 
-      # Resume reader outside the lock (and relay to others for mGet)
-      if entry = reader_to_notify
-        _, _, tid, is_take = entry
-        tid.resume_fiber
-        # For mGet, we need to relay to other blocked readers
-        unless is_take
-          relay_to_readers(value)
-        end
-      end
+      readers_to_notify.each { |_, _, tid, _, _| tid.resume_fiber }
     end
 
     # Take the value (blocks if empty, clears the MVar)
@@ -201,8 +181,7 @@ module CML
           end
 
           Blocked(T).new do |tid, next_fn|
-            mvar.@readers << {recv_slot, recv_done, tid, true} # is_take = true
-            tid.set_cleanup -> { mvar.remove_reader(tid.id) }
+            mvar.register_waiter(recv_slot, recv_done, tid, WaitKind::Take, nil)
             next_fn.call
           end
         end
@@ -233,8 +212,7 @@ module CML
           end
 
           Blocked(T).new do |tid, next_fn|
-            mvar.@readers << {recv_slot, recv_done, tid, false} # is_take = false
-            tid.set_cleanup -> { mvar.remove_reader(tid.id) }
+            mvar.register_waiter(recv_slot, recv_done, tid, WaitKind::Get, nil)
             next_fn.call
           end
         end
@@ -267,11 +245,7 @@ module CML
 
           # Block until value available, then swap
           Blocked(T).new do |tid, next_fn|
-            # For swap, we act like take but then immediately put new value
-            mvar.@readers << {recv_slot, recv_done, tid, true} # take first
-            tid.set_cleanup -> {
-              mvar.remove_reader(tid.id)
-            }
+            mvar.register_waiter(recv_slot, recv_done, tid, WaitKind::Swap, new_value)
             next_fn.call
           end
         end
@@ -279,7 +253,7 @@ module CML
     end
 
     protected def remove_reader(tid_id : Int64)
-      @mtx.synchronize { @readers.reject! { |_, _, t, _| t.id == tid_id } }
+      @mtx.synchronize { @readers.reject! { |_, _, t, _, _| t.id == tid_id } }
     end
 
     # Bump priority and return old value
@@ -301,30 +275,50 @@ module CML
       @has_value = true
     end
 
-    # Relay value to other blocked readers (for mGet semantics)
-    protected def relay_to_readers(value : T)
-      readers_to_notify = [] of {Slot(T), AtomicFlag, TransactionId, Bool}
+    # Register after the first poll has returned Blocked. A concurrent put may
+    # have made the value available in between, so admission must re-check and
+    # satisfy the waiter while holding the same lock as mutation.
+    protected def register_waiter(recv_slot : Slot(T), recv_done : AtomicFlag, tid : TransactionId, kind : WaitKind, replacement : T?) : Nil
+      readers_to_notify = [] of {Slot(T), AtomicFlag, TransactionId, WaitKind, T?}
 
       @mtx.synchronize do
-        while entry = @readers.shift?
-          recv_slot, recv_done, recv_tid, is_take = entry
-          next if recv_tid.cancelled?
-          recv_slot.set(value)
-          recv_done.set(true)
-          readers_to_notify << entry
-
-          # If this is a take, consume the value and stop
-          if is_take
-            @value = nil
-            @has_value = false
-            break
-          end
+        if tid.active? && !recv_done.get
+          @readers << {recv_slot, recv_done, tid, kind, replacement}
+          tid.set_cleanup -> { remove_reader(tid.id) }
+          readers_to_notify = satisfy_waiters if @has_value
         end
       end
 
-      readers_to_notify.each do |_, _, tid, _|
-        tid.resume_fiber
+      readers_to_notify.each { |_, _, waiter_tid, _, _| waiter_tid.resume_fiber }
+    end
+
+    # Consume queued operations in FIFO order. `get` observes but preserves the
+    # value; `take` consumes it; `swap` returns it and installs its replacement.
+    private def satisfy_waiters : Array({Slot(T), AtomicFlag, TransactionId, WaitKind, T?})
+      ready = [] of {Slot(T), AtomicFlag, TransactionId, WaitKind, T?}
+
+      while @has_value
+        entry = @readers.shift?
+        break unless entry
+        recv_slot, recv_done, recv_tid, kind, replacement = entry
+        next unless recv_tid.active?
+
+        value = @value.as(T)
+        recv_slot.set(value)
+        recv_done.set(true)
+        ready << entry
+
+        case kind
+        when WaitKind::Get
+          # Keep serving getters while a value remains.
+        when WaitKind::Take
+          clear_value
+        when WaitKind::Swap
+          set_value(replacement.as(T))
+        end
       end
+
+      ready
     end
   end
 end

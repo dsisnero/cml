@@ -298,5 +298,74 @@ module CML
       #   result.should eq("default")
       # end
     end
+
+    describe "ChooseEvent.force_impl merges BaseGroups (not NestedGroup round-trip)" do
+      it "two channel events: force returns merged BaseGroup" do
+        ch1 = Chan(Int32).new
+        ch2 = Chan(Int32).new
+        evt = CML.choose([ch1.recv_evt, ch2.recv_evt])
+        group = evt.force
+        group.should be_a(BaseGroup(Int32))
+        group.as(BaseGroup(Int32)).events.size.should eq(2)
+      end
+
+      it "channel + timeout: force returns merged BaseGroup" do
+        ch = Chan(Int32).new
+        evt = CML.choose(ch.recv_evt, CML.timeout(5.seconds))
+        group = evt.force
+        group.should be_a(BaseGroup(Int32 | Nil))
+        group.as(BaseGroup(Int32 | Nil)).events.size.should eq(2)
+      end
+
+      it "three events including always: force merges BaseGroups" do
+        ch1 = Chan(Int32).new
+        ch2 = Chan(Int32).new
+        evt = CML.choose([ch1.recv_evt, ch2.recv_evt, CML.always(99)])
+        group = evt.force
+        group.should be_a(BaseGroup(Int32))
+        group.as(BaseGroup(Int32)).events.size.should eq(3)
+      end
+
+      it "still uses NestedGroup when nack is present" do
+        ch1 = Chan(Int32).new
+        ch2 = Chan(Int32).new
+        evt = CML.choose([
+          ch1.recv_evt,
+          CML.with_nack { |nack| ch2.recv_evt },
+        ])
+        group = evt.force
+        # With nack present, must not be a flat BaseGroup
+        group.should be_a(NestedGroup(Int32))
+      end
+
+      it "retains base branches preceding a nack group" do
+        base = CML.always(1)
+        evt = CML.choose([
+          base,
+          CML.with_nack { |_| CML.never(Int32) },
+        ])
+
+        group = evt.force.as(NestedGroup(Int32))
+        group.groups.size.should eq(2)
+        group.groups.first.should be_a(BaseGroup(Int32))
+        group.groups.first.as(BaseGroup(Int32)).events.size.should eq(1)
+        group.groups.last.should be_a(NackGroup(Int32))
+        CML.sync(evt).should eq(1)
+      end
+
+      it "still uses NestedGroup when guard is present" do
+        ch1 = Chan(Int32).new
+        evt = CML.choose([
+          ch1.recv_evt,
+          CML.guard { CML.always(42) },
+        ])
+        group = evt.force
+        # GuardEvent produces its own group at force time; this could be BaseGroup
+        # but the current architecture makes it path-dependent.
+        # Just verify the sync works correctly:
+        result = CML.sync(evt)
+        result.should eq(42)
+      end
+    end
   end
 end

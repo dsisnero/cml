@@ -1037,7 +1037,7 @@ module CML
                   output_server.remove_target(target_id)
                 })
                 add_remote_conn.call(conn, target_id)
-              rescue
+              rescue ex : IO::Error
                 # Keep server loop alive on transient accept/decode errors.
               end
             end

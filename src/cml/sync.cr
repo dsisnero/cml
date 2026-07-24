@@ -1,15 +1,16 @@
 # Synchronization primitives compatibility.
 #
-# When compiled with `-Dpreview_mt -Dexecution_context`, use Crystal's
-# thread-safe Sync primitives. Otherwise, fall back to fiber-safe primitives.
+# Crystal 1.21 enables execution contexts by default. Older Crystal versions
+# use thread-safe Sync primitives only when the legacy execution-context flags
+# are enabled. Otherwise, fall back to fiber-safe primitives.
 
-{% if compare_versions(Crystal::VERSION, "1.19.0") >= 0 && flag?(:preview_mt) && flag?(:execution_context) %}
+{% if compare_versions(Crystal::VERSION, "1.21.0") >= 0 || (compare_versions(Crystal::VERSION, "1.19.0") >= 0 && flag?(:preview_mt) && flag?(:execution_context)) %}
   require "sync/**"
 {% end %}
 
 module CML
   module Sync
-    {% if compare_versions(Crystal::VERSION, "1.19.0") >= 0 && flag?(:preview_mt) && flag?(:execution_context) %}
+    {% if compare_versions(Crystal::VERSION, "1.21.0") >= 0 || (compare_versions(Crystal::VERSION, "1.19.0") >= 0 && flag?(:preview_mt) && flag?(:execution_context)) %}
       # Thread-safe primitives when multithreaded execution contexts are enabled.
       alias Mutex = ::Sync::Mutex
       alias ConditionVariable = ::Sync::ConditionVariable

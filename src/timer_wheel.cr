@@ -1,9 +1,10 @@
+require "atomic"
+
 module CML
   # Hierarchical timing wheel for efficient timeout management.
   # This class is thread-safe.
   class TimerWheel
     getter current_time : UInt64
-    getter? running : Bool
 
     # Represents a scheduled timer.
     class TimerEntry
@@ -48,7 +49,7 @@ module CML
       @next_id = 0_u64
       @timer_locations = [] of TimerEntry?
       @mutex = Sync::Mutex.new
-      @running = true
+      @running = Atomic(Bool).new(true)
       @sync_callbacks = sync_callbacks
 
       setup_wheels
@@ -58,6 +59,7 @@ module CML
     # Schedules a one-time timeout.
     def schedule(timeout : Time::Span, &callback : -> Nil) : UInt64
       @mutex.synchronize do
+        process_expired_internal
         add_timer_internal(timeout, nil, callback)
       end
     end
@@ -65,6 +67,7 @@ module CML
     # Schedules a recurring timer.
     def schedule_interval(interval : Time::Span, &callback : -> Nil) : UInt64
       @mutex.synchronize do
+        process_expired_internal
         add_timer_internal(interval, interval, callback)
       end
     end
@@ -113,6 +116,10 @@ module CML
 
     def tick_duration : Time::Span
       @tick_duration
+    end
+
+    def running? : Bool
+      @running.get
     end
 
     private def setup_wheels
@@ -178,7 +185,7 @@ module CML
     end
 
     private def stop_internal
-      @running = false
+      @running.set(false)
       @wheel_slots.each(&.clear)
       @pending_timers.clear
       @ready_callbacks.clear
@@ -375,10 +382,10 @@ module CML
     end
 
     private def process_timers_loop
-      while @running
+      while @running.get
         callbacks = [] of Proc(Nil)
         sleep_duration = @mutex.synchronize do
-          break unless @running
+          break unless @running.get
           process_expired_internal
           callbacks = drain_ready_callbacks_internal
           calculate_next_sleep_duration_internal
@@ -401,7 +408,22 @@ module CML
         callbacks.each(&.call)
       else
         callbacks.each do |callback|
-          spawn { callback.call rescue nil }
+          spawn do
+            begin
+              callback.call
+            rescue ex
+              report_callback_exception(ex)
+            end
+          end
+        end
+      end
+    end
+
+    private def report_callback_exception(ex : Exception) : Nil
+      STDERR.puts "Unhandled TimerWheel callback exception: #{ex.message || ex.class}"
+      if backtrace = ex.backtrace?
+        backtrace.each do |line|
+          STDERR.puts line
         end
       end
     end

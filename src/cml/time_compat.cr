@@ -6,7 +6,7 @@
 module CML
   {% if compare_versions(Crystal::VERSION, "1.19.0") >= 0 %}
     @@monotonic_baseline_instant : Time::Instant?
-    @@monotonic_baseline_ms : UInt64 = 0_u64
+    @@monotonic_baseline_mtx = Sync::Mutex.new
   {% end %}
 
   # Returns monotonic milliseconds as UInt64.
@@ -15,14 +15,11 @@ module CML
     {% if compare_versions(Crystal::VERSION, "1.19.0") >= 0 %}
       # Crystal 1.19.0+: Use Time::Instant with baseline for monotonic milliseconds
       # Since Time::Instant doesn't expose raw values, we compute offset from a baseline
-      baseline = @@monotonic_baseline_instant
-      if baseline.nil?
-        baseline = Time.instant
-        @@monotonic_baseline_instant = baseline
+      baseline = @@monotonic_baseline_mtx.synchronize do
+        @@monotonic_baseline_instant ||= Time.instant
       end
-      baseline_ms = @@monotonic_baseline_ms
       elapsed = Time.instant - baseline
-      baseline_ms + elapsed.total_milliseconds.to_u64
+      elapsed.total_milliseconds.to_u64
     {% else %}
       # Pre-1.19.0: Use deprecated Time.monotonic
       Time.monotonic.total_milliseconds.to_u64

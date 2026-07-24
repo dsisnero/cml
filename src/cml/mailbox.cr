@@ -15,7 +15,7 @@ module CML
     @messages = Deque(T).new
     @receivers = Deque({Slot(T), AtomicFlag, TransactionId}).new
     @priority = 0
-    @mtx = CML::Sync::Mutex.new
+    @mtx = CML::Sync::Mutex.new(:reentrant)
 
     def initialize
     end
@@ -43,7 +43,6 @@ module CML
         recv_tid.resume_fiber
       end
 
-      Fiber.yield
     end
 
     # Blocking receive
@@ -99,8 +98,21 @@ module CML
           end
 
           Blocked(T).new do |tid, next_fn|
-            mbox.@receivers << {recv_slot, recv_done, tid}
-            tid.set_cleanup -> { mbox.remove_receiver(tid.id) }
+            # A sender may publish after poll releases its lock but before
+            # this callback runs. Make admission and the second availability
+            # check one atomic operation to avoid a missed wakeup.
+            mbox.@mtx.synchronize do
+              if tid.active? && !recv_done.get
+                if queued_message = mbox.@messages.shift?
+                  recv_slot.set(queued_message)
+                  recv_done.set(true)
+                  tid.try_commit_and_resume
+                else
+                  mbox.@receivers << {recv_slot, recv_done, tid}
+                  tid.set_cleanup -> { mbox.remove_receiver(tid.id) }
+                end
+              end
+            end
             next_fn.call
           end
         end

@@ -8,7 +8,7 @@ describe "CML DSL helpers" do
     result.should eq(:done)
   end
 
-  it "spawn_evt spawns on sync" do
+  it "spawn_evt spawns on sync and returns the thread id" do
     flag = Atomic(Bool).new(false)
 
     tid = CML.sync(CML.spawn_evt { flag.set(true) })

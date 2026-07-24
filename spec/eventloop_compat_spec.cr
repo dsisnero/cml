@@ -1,4 +1,4 @@
-{% skip_file unless flag?(:preview_mt) && flag?(:execution_context) %}
+{% skip_file unless compare_versions(Crystal::VERSION, "1.21.0") >= 0 || (flag?(:preview_mt) && flag?(:execution_context)) %}
 require "./spec_helper"
 require "fiber/execution_context"
 

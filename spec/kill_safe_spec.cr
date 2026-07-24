@@ -51,7 +51,33 @@ describe "Kill-safe abstractions" do
     end
   end
 
-  pending "killed thread raises Thread::Killed on next sync"
+  it "killed thread raises Thread::Killed on next sync" do
+    CML.set_running(false)
+    begin
+      CML.run do
+        ch = CML.channel(Int32)
+        got_killed = false
+
+        tid = CML.spawn do
+          begin
+            CML.sync(ch.recv_evt)
+          rescue CML::Thread::Killed
+            got_killed = true
+          end
+        end
+
+        # Let the spawned fiber block on recv
+        CML.sleep(10.milliseconds)
+        CML.kill(tid)
+        # Give the killed fiber time to wake up and process the exception
+        CML.sleep(20.milliseconds)
+
+        got_killed.should be_true
+      end
+    ensure
+      CML.set_running(true)
+    end
+  end
 
   it "kill removes thread from channel waiting queue" do
     CML.set_running(false)

@@ -101,8 +101,11 @@ module CML
     @update_fn : Proc(T, T)
     @enrolled_count = 0
     @waiting_count = 0
-    @waiters = Deque({Slot(T), AtomicFlag, TransactionId}).new
-    @mtx = Sync::Mutex.new
+    # Keep the enrollment alongside the transaction so completing a generation
+    # can reset every participant, not just the thread that happened to trip
+    # the barrier.
+    @waiters = Deque({Slot(T), AtomicFlag, TransactionId, Enrollment(T), AtomicFlag}).new
+    @mtx = Sync::Mutex.new(:reentrant)
 
     # Create a barrier with an update function and initial state
     # SML: val barrier : ('a -> 'a) -> 'a -> 'a barrier
@@ -159,13 +162,13 @@ module CML
       @waiting_count = 0
     end
 
-    protected def add_waiter(entry : {Slot(T), AtomicFlag, TransactionId})
+    protected def add_waiter(entry : {Slot(T), AtomicFlag, TransactionId, Enrollment(T), AtomicFlag})
       @waiters << entry
     end
 
     protected def remove_waiter(tid_id : Int64) : Bool
       removed = false
-      @waiters.reject! do |_, _, t|
+      @waiters.reject! do |_, _, t, _, _|
         if t.id == tid_id
           removed = true
           true
@@ -176,7 +179,7 @@ module CML
       removed
     end
 
-    protected def take_waiters : Array({Slot(T), AtomicFlag, TransactionId})
+    protected def take_waiters : Array({Slot(T), AtomicFlag, TransactionId, Enrollment(T), AtomicFlag})
       result = @waiters.to_a
       @waiters.clear
       result
@@ -204,17 +207,7 @@ module CML
             if enrollment.resigned?
               raise "Barrier wait after resignation"
             elsif enrollment.waiting?
-              # Another poll/event is already waiting - this poll must block
-              # Return blocked but don't increment counters again
-              return Blocked(T).new do |tid, next_fn|
-                barrier.add_waiter({recv_slot, recv_done, tid})
-                tid.set_cleanup -> {
-                  barrier.@mtx.synchronize do
-                    barrier.remove_waiter(tid.id)
-                  end
-                }
-                next_fn.call
-              end
+              raise "Barrier enrollment already has a pending wait"
             end
 
             poll_registered.set(true)
@@ -222,47 +215,49 @@ module CML
             barrier.increment_waiting
           end
 
-          if barrier.waiting_count == barrier.enrolled_count
-            # === TRIGGER BARRIER ===
-            # Update state
-            new_state = barrier.update_state
+          # Waiter registration happens after this poll returns. Completion
+          # therefore belongs in that admission callback, once every counted
+          # enrollment is represented in @waiters.
+          Blocked(T).new do |tid, next_fn|
+            waiters_to_notify = [] of {Slot(T), AtomicFlag, TransactionId, Enrollment(T), AtomicFlag}
+            new_state : T? = nil
 
-            # Notify all waiters
-            waiters_to_notify = barrier.take_waiters
-            barrier.reset_waiting
+            barrier.@mtx.synchronize do
+              if tid.active? && !recv_done.get
+                barrier.add_waiter({recv_slot, recv_done, tid, enrollment, poll_registered})
+                tid.set_cleanup -> {
+                  barrier.@mtx.synchronize do
+                    if barrier.remove_waiter(tid.id)
+                      barrier.decrement_waiting
+                      enrollment.mark_enrolled
+                      poll_registered.set(false)
+                    end
+                  end
+                }
 
-            # Reset triggerer status
-            enrollment.mark_enrolled
-            poll_registered.set(false)
+                # All enrolled participants must have both polled and entered
+                # the waiter queue before a generation may complete.
+                if barrier.waiting_count > 0 &&
+                   barrier.waiting_count == barrier.enrolled_count &&
+                   barrier.@waiters.size == barrier.waiting_count
+                  new_state = barrier.update_state
+                  waiters_to_notify = barrier.take_waiters
+                  barrier.reset_waiting
 
-            # Notify others outside... but we're in synchronize
-            # We need to collect and notify after
-            waiters_to_notify.each do |slot, done, tid|
-              next if tid.cancelled?
-              slot.set(new_state)
-              done.set(true)
-              tid.resume_fiber
-            end
-
-            # Return enabled for triggerer
-            recv_slot.set(new_state)
-            recv_done.set(true)
-            return Enabled(T).new(priority: 0, value: new_state)
-          else
-            # === QUEUE WAIT ===
-            Blocked(T).new do |tid, next_fn|
-              barrier.add_waiter({recv_slot, recv_done, tid})
-              tid.set_cleanup -> {
-                barrier.@mtx.synchronize do
-                  if barrier.remove_waiter(tid.id)
-                    barrier.decrement_waiting
-                    enrollment.mark_enrolled
-                    poll_registered.set(false)
+                  waiters_to_notify.each do |slot, done, _, waiter_enrollment, waiter_registered|
+                    slot.set(new_state.as(T))
+                    done.set(true)
+                    waiter_enrollment.mark_enrolled
+                    waiter_registered.set(false)
                   end
                 end
-              }
-              next_fn.call
+              end
             end
+
+            waiters_to_notify.each do |_, _, waiter_tid, _, _|
+              waiter_tid.resume_fiber
+            end
+            next_fn.call
           end
         end
       }
@@ -270,7 +265,7 @@ module CML
 
     # Handle resignation
     protected def do_resign(enrollment : Enrollment(T))
-      waiters_to_notify = [] of {Slot(T), AtomicFlag, TransactionId}
+      waiters_to_notify = [] of {Slot(T), AtomicFlag, TransactionId, Enrollment(T), AtomicFlag}
       new_state : T? = nil
 
       @mtx.synchronize do
@@ -293,10 +288,12 @@ module CML
 
       # Notify waiters outside the lock
       if val = new_state
-        waiters_to_notify.each do |slot, done, tid|
+        waiters_to_notify.each do |slot, done, tid, waiter_enrollment, waiter_registered|
           next if tid.cancelled?
           slot.set(val)
           done.set(true)
+          waiter_enrollment.mark_enrolled
+          waiter_registered.set(false)
           tid.resume_fiber
         end
       end

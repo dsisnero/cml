@@ -4,7 +4,7 @@ module CML
     @value : Slot(T)
     @readers = Deque({Slot(T), AtomicFlag, TransactionId}).new
     @priority = 0
-    @mtx = CML::Sync::Mutex.new
+    @mtx = CML::Sync::Mutex.new(:reentrant)
 
     # Event used to wait for the value without leaking into the CML namespace.
     class GetEvent(U) < Event(U)
@@ -109,8 +109,21 @@ module CML
 
           # No value - need to block
           Blocked(T).new do |tid, next_fn|
-            ivar.@readers << {recv_slot, recv_done, tid}
-            tid.set_cleanup -> { ivar.remove_reader(tid.id) }
+            # The callback runs after the polling lock is released. Re-check
+            # under the IVar lock to avoid a put/register missed wakeup.
+            ivar.@mtx.synchronize do
+              if tid.active? && !recv_done.get
+                if ivar.@value.has_value?
+                  available_value = ivar.@value.get
+                  recv_slot.set(available_value)
+                  recv_done.set(true)
+                  tid.try_commit_and_resume
+                else
+                  ivar.@readers << {recv_slot, recv_done, tid}
+                  tid.set_cleanup -> { ivar.remove_reader(tid.id) }
+                end
+              end
+            end
             next_fn.call
           end
         end

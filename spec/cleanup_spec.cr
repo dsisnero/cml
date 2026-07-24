@@ -80,6 +80,21 @@ module CML
         init_called.should eq(1)
         shut_called.should eq(1)
       end
+
+      it "runs custom cleaners synchronously before returning" do
+        init_called = false
+        Cleanup.add_cleaner("sync-cleaner", [Cleanup::When::AtInit], ->(_time : Cleanup::When) {
+          init_called = true
+          nil
+        })
+
+        begin
+          Cleanup.clean_all(Cleanup::When::AtInit)
+          init_called.should be_true
+        ensure
+          Cleanup.remove_cleaner("sync-cleaner")
+        end
+      end
     end
 
     describe "standard cleaners" do
