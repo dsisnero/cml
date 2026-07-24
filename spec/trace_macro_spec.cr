@@ -13,6 +13,7 @@ describe "CML::Tracer" do
     it "emits trace output when enabled" do
       io = IO::Memory.new
       CML::Tracer.set_output(io)
+      CML::Tracer.set_filter_events([] of String)
       CML::Tracer.set_filter_tags(["spec"])
 
       CML.trace "spec_event", "payload", tag: "spec"
@@ -20,6 +21,40 @@ describe "CML::Tracer" do
       output = io.to_s
       output.should contain("spec_event")
       output.should contain("payload")
+
+      CML::Tracer.set_filter_tags([] of String)
+    end
+
+    it "filters by the runtime event name" do
+      io = IO::Memory.new
+      CML::Tracer.set_output(io)
+      CML::Tracer.set_filter_tags([] of String)
+      CML::Tracer.set_filter_events(["spec_event"])
+
+      CML.trace "spec_event", "payload", tag: "spec"
+      CML.trace "other_event", "ignored", tag: "spec"
+
+      output = io.to_s
+      output.should contain("spec_event")
+      output.should_not contain("other_event")
+
+      CML::Tracer.set_filter_events([] of String)
+    end
+
+    it "uses variable event values instead of source text" do
+      io = IO::Memory.new
+      CML::Tracer.set_output(io)
+      CML::Tracer.set_filter_tags([] of String)
+      CML::Tracer.set_filter_events(["dynamic_event"])
+
+      event_name = "dynamic_event"
+      CML.trace event_name, "payload", tag: "spec"
+
+      output = io.to_s
+      output.should contain("dynamic_event")
+      output.should_not contain("event_name")
+
+      CML::Tracer.set_filter_events([] of String)
     end
   {% else %}
     it "runs trace specs with -Dtrace (usage example)" do

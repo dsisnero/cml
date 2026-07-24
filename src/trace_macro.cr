@@ -8,6 +8,10 @@
 # Based on the debugging guide documentation and SML/NJ TRACE_CML signature,
 # but simplified for Crystal idioms and macro capabilities.
 
+{% if flag?(:trace) %}
+  require "tracing"
+{% end %}
+
 module CML
   # Tracer configuration class for runtime filtering and output control.
   # All methods are no-ops when compiled without `-Dtrace`.
@@ -22,6 +26,7 @@ module CML
 
     # Fiber name mapping
     @@fiber_names = Hash(Fiber, String).new
+    @@backend_configured = Atomic(Bool).new(false)
 
     # Event counter for unique IDs
     @@event_counter = Atomic(Int64).new(0_i64)
@@ -96,38 +101,48 @@ module CML
       @@event_counter.add(1)
     end
 
-    # Output a trace message (called from macro expansion)
-    # Uses *args splat to accept any number of arguments
+    # Emit a structured tracing.cr event. The mutex serializes CML trace output
+    # and protects all CML filter state in parallel execution contexts.
     def self.trace_impl(event_type : String, *args, tag : String? = nil) : Nil
-      return unless should_trace?(event_type, tag)
+      {% if flag?(:trace) %}
+        @@mutex.synchronize do
+          return unless should_trace?(event_type, tag)
 
-      event_id = next_event_id
-      fiber = fiber_name
-      timestamp = Time.utc
-
-      # Format: [timestamp] [fiber] [event_id] [event_type] [tag] args...
-      parts = ["[#{timestamp}]", "[#{fiber}]", "[#{event_id}]", "[#{event_type}]"]
-      parts << "[#{tag}]" if tag
-      args.each { |arg| parts << arg.inspect }
-
-      @@mutex.synchronize do
-        @@output.puts parts.join(" ")
-        @@output.flush
-      end
+          configure_backend
+          ::Tracing.debug(
+            event_type,
+            tag: tag || "cml",
+            fiber: fiber_name,
+            arguments: args.map(&.inspect).join(", "),
+          )
+        end
+      {% end %}
     end
+
+    {% if flag?(:trace) %}
+      private def self.configure_backend : Nil
+        return unless @@backend_configured.compare_and_set(false, true)
+
+        # Leave an application-configured tracing subscriber untouched.
+        ::Tracing::Subscriber.try_init(
+          ::Tracing::Registry.default
+            .with(::Tracing::FmtLayer.make_writer { @@output }.compact)
+        )
+      end
+    {% end %}
   end
 
   # Main tracing macro
   # Usage: CML.trace "event_type", arg1, arg2, ..., tag: "optional_tag"
   macro trace(event_type, *args, tag = nil)
     {% if flag?(:trace) %}
-      # When tracing is enabled, expand to runtime check and output
-      # Convert event_type to string (handles both string literals and expressions)
-      # Use args.splat instead of deprecated *args
+      # When tracing is enabled, expand to runtime check and output.
+      # Use the runtime string value of event_type so filtering works with
+      # ordinary string names instead of quoted source text.
       {% if args.size > 0 %}
-        ::CML::Tracer.trace_impl({{ event_type.stringify }}, {{ args.splat }}{% if tag %}, tag: {{ tag }}{% end %})
+        ::CML::Tracer.trace_impl(({{ event_type }}).to_s, {{ args.splat }}{% if tag %}, tag: {{ tag }}{% end %})
       {% else %}
-        ::CML::Tracer.trace_impl({{ event_type.stringify }}{% if tag %}, tag: {{ tag }}{% end %})
+        ::CML::Tracer.trace_impl(({{ event_type }}).to_s{% if tag %}, tag: {{ tag }}{% end %})
       {% end %}
     {% else %}
       # When tracing is disabled, expand to nothing (zero overhead)
