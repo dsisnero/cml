@@ -10,11 +10,12 @@ events, channels, and helpers.
 CML.after(1.second) { puts "Timeout reached!" }
 ```
 
-## 2. Spawning a worker and waiting for result
+## 2. Spawning a worker and waiting for completion
 
 ```crystal
-result_evt = CML.spawn_evt { compute_something() }
-CML.sync(result_evt)
+tid_evt = CML.spawn_evt { compute_something() }
+tid = CML.sync(tid_evt)
+CML.sync(CML.join_evt(tid))
 ```
 
 ## 3. Pipeline with channels

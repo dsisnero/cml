@@ -22,11 +22,11 @@ the `CML` module itself (not a separate structure).
 def self.run(&block : -> Nil) : Nil
 ```
 
-**Description**: Runs a CML program. In SML/NJ, `doit` takes a main function and
-an optional timeout, returning process status. In Crystal, `CML.run` takes a
-block and executes it within the CML runtime, automatically initializing and
-shutting down CML. There is no timeout parameter; use `timeout` events for
-time-limited execution.
+**Description**: Runs a CML program inside an explicit lifecycle scope. In
+SML/NJ, `doit` takes a main function and an optional timeout, returning process
+status. In Crystal, `CML.run` takes a block, executes cleanup hooks for
+`AtInit`, runs the block, then executes `AtShutdown` cleanup on exit. There is
+no timeout parameter; use `timeout` events for time-limited execution.
 
 **Prototype**:
 
@@ -46,9 +46,10 @@ end
 def self.running? : Bool
 ```
 
-**Description**: Returns `true` if CML is currently running (i.e., `CML.run` has
-been called and not yet terminated). This can be used to check if CML operations
-are permitted.
+**Description**: Returns `true` if the CML runtime is enabled for operations.
+For backward compatibility, the runtime starts enabled by default, so direct
+event/channel operations work without wrapping the whole program in `CML.run`.
+`CML.run` is still useful when you want explicit init/shutdown cleanup phases.
 
 **Prototype**:
 

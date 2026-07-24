@@ -17,7 +17,7 @@ into an array.
 ## Benchmark
 
 ```bash
-crystal run -Dpreview_mt -Dexecution_context examples/directory_walker/benchmark.cr -- /path/to/root
+crystal run examples/directory_walker/benchmark.cr -- /path/to/root
 ```
 
 Optional environment variables:
@@ -28,5 +28,8 @@ Optional environment variables:
 Example:
 
 ```bash
-WORKERS=8 ITERATIONS=5 crystal run -Dpreview_mt -Dexecution_context examples/directory_walker/benchmark.cr -- .
+WORKERS=8 ITERATIONS=5 crystal run examples/directory_walker/benchmark.cr -- .
+
+Crystal 1.21+ enables execution contexts by default. For Crystal 1.19–1.20,
+add `-Dpreview_mt -Dexecution_context` to the commands above.
 ```

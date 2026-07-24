@@ -126,7 +126,7 @@ module DirectoryWalker
     threads = [] of Thread
     workers.times do
       threads << Thread.new do
-        {% if flag?(:execution_context) %}
+        {% if compare_versions(Crystal::VERSION, "1.21.0") >= 0 || (flag?(:preview_mt) && flag?(:execution_context)) %}
           Thread.current.execution_context = CML::ExecutionContext.new("dir-walker", 1)
         {% end %}
         begin

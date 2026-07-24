@@ -67,7 +67,7 @@ SML/NJ:
 
 *   `CML.after(duration, &block)` - Timeout with block execution
 *   `CML.sleep(duration)` - Convenience sleep function
-*   `CML.spawn_evt(&block)` - Event that spawns a thread
+*   `CML.spawn_evt(&block)` - Event that spawns a thread and yields its thread id
 *   `CML.nack(evt, &block)` - Add nack handler to existing event
 *   Macro-based `choose` with varargs support
 *   Tracing system with conditional compilation (`-Dtrace`)

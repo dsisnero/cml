@@ -10,9 +10,11 @@ built from first principles using events, channels, and fibers.
 [![Crystal CI](https://img.shields.io/badge/Crystal-1.0+-brightgreen.svg)](https://crystal-lang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-**Compatibility Note:** CML works without compile flags in default fiber mode.
-Pass `-Dpreview_mt -Dexecution_context` only when you want multithreaded
-execution contexts and thread-safe `Sync` primitives.
+**Compatibility Note:** On Crystal 1.21+, execution contexts and thread-safe
+`Sync` primitives are enabled by default; the process-default context still has
+parallelism 1. Use an explicit `CML::ExecutionContext` only for measured,
+CPU-bound work that benefits from parallelism. Crystal 1.19–1.20 requires
+`-Dpreview_mt -Dexecution_context` to opt into the same behavior.
 
 ---
 
@@ -103,11 +105,12 @@ shards install
 CML.after(1.second) { puts "Timeout reached!" }
 ```
 
-### Spawning a Worker and Waiting for Result
+### Spawning a Worker and Getting Its Thread ID
 
 ```crystal
-result_evt = CML.spawn_evt { compute_something() }
-CML.sync(result_evt)
+tid_evt = CML.spawn_evt { compute_something() }
+tid = CML.sync(tid_evt)
+CML.sync(CML.join_evt(tid))
 ```
 
 ### Pipeline with Channels
@@ -161,9 +164,10 @@ safe_evt = CML.nack(ch.recv_evt) { puts "Event was cancelled!" }
 # After/Timeout helper
 CML.after(2.seconds) { puts "done after 2s" }
 
-# Spawn a fiber and get result as event
+# Spawn a fiber and get its thread id as an event
 evt = CML.spawn_evt { 123 }
-CML.sync(evt) # => 123
+tid = CML.sync(evt)
+CML.sync(CML.join_evt(tid))
 ```
 
 ### IO & Socket Helpers
@@ -199,7 +203,8 @@ resp = CML.sync(CML.choose([
 *   `CML.never` - Event that never succeeds
 *   `CML.timeout(duration)` - Time-based event
 *   `CML.after(span) { ... }` - Run a block after a delay (helper)
-*   `CML.spawn_evt { ... }` - Run a block in a fiber, return result as event
+*   `CML.spawn_evt { ... }` - Run a block in a fiber, return the spawned
+  thread id as an event
   (helper)
 
 ### Combinators
@@ -282,7 +287,7 @@ end
 
 ```bash
 CRYSTAL_CACHE_DIR=$PWD/.crystal-cache crystal spec
-# Optional: enable multithreaded execution-context specs
+# Crystal 1.19–1.20 only: enable execution-context specs
 CRYSTAL_CACHE_DIR=$PWD/.crystal-cache crystal spec -Dpreview_mt -Dexecution_context
 ```
 

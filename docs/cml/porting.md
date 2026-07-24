@@ -160,7 +160,7 @@ Crystal CML includes extensions not in SML/NJ:
 
 *   `CML.after(duration, &block)` - Timeout with block execution
 *   `CML.sleep(duration)` - Convenience sleep function
-*   `CML.spawn_evt(&block)` - Event that spawns a thread
+*   `CML.spawn_evt(&block)` - Event that spawns a thread and returns its id
 *   `CML.nack(evt, &block)` - Add nack handler to existing event
 *   Macro-based tracing system (`-Dtrace` flag)
 

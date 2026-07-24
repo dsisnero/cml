@@ -674,7 +674,7 @@ def self.spawn_evt(&block : -> Nil) : Event(Thread::Id)
 ```
 
 Creates an event that, when synchronized, spawns a new thread executing the
-block.
+block and returns the spawned `Thread::Id`.
 
 ### `nack`
 
