@@ -13,7 +13,6 @@ license: MIT
 dependencies:
   tracing:
     github: dsisnero/tracing.cr
-    branch: codex/cml-parallel-tracing
 
 development_dependencies:
   ameba:
