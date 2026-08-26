@@ -1,6 +1,4 @@
 CRYSTAL ?= crystal
-CRYSTAL_SPEC_FLAGS ?= -Dpreview_mt -Dexecution_context
-CRYSTAL_RUN_FLAGS ?= -Dpreview_mt -Dexecution_context
 BENCH_DIR_WALKER_RESULTS ?= examples/directory_walker/benchmark_results.txt
 CRYSTAL_CACHE_DIR ?= .crystal_cache
 export CRYSTAL_CACHE_DIR
@@ -83,7 +81,7 @@ clean:
 	@echo "Note: Preserving extracted examples in $(HOW_TO_DIR) and other directories"
 
 spec: $(CRYSTAL_CACHE_DIR)
-	$(CRYSTAL) spec $(CRYSTAL_SPEC_FLAGS) spec --verbose
+	$(CRYSTAL) spec spec --verbose
 
 bench-directory-walker: $(CRYSTAL_CACHE_DIR)
 	@rm -f $(BENCH_DIR_WALKER_RESULTS)
@@ -91,7 +89,7 @@ bench-directory-walker: $(CRYSTAL_CACHE_DIR)
 	@echo "root=$${ROOT:-examples} workers=$${WORKERS:-$$(sysctl -n hw.ncpu)} iterations=$${ITERATIONS:-3}" >> $(BENCH_DIR_WALKER_RESULTS)
 	@echo "" >> $(BENCH_DIR_WALKER_RESULTS)
 	@echo "[debug]" >> $(BENCH_DIR_WALKER_RESULTS)
-	@CRYSTAL_CACHE_DIR=$(CRYSTAL_CACHE_DIR) $(CRYSTAL) run $(CRYSTAL_RUN_FLAGS) examples/directory_walker/benchmark.cr -- "$${ROOT:-examples}" >> $(BENCH_DIR_WALKER_RESULTS)
+	@CRYSTAL_CACHE_DIR=$(CRYSTAL_CACHE_DIR) $(CRYSTAL) run examples/directory_walker/benchmark.cr -- "$${ROOT:-examples}" >> $(BENCH_DIR_WALKER_RESULTS)
 	@echo "" >> $(BENCH_DIR_WALKER_RESULTS)
 	@echo "[release]" >> $(BENCH_DIR_WALKER_RESULTS)
-	@CRYSTAL_CACHE_DIR=$(CRYSTAL_CACHE_DIR) $(CRYSTAL) run --release $(CRYSTAL_RUN_FLAGS) examples/directory_walker/benchmark.cr -- "$${ROOT:-examples}" >> $(BENCH_DIR_WALKER_RESULTS)
+	@CRYSTAL_CACHE_DIR=$(CRYSTAL_CACHE_DIR) $(CRYSTAL) run --release examples/directory_walker/benchmark.cr -- "$${ROOT:-examples}" >> $(BENCH_DIR_WALKER_RESULTS)
